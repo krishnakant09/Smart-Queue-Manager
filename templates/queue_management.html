@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+
+{% block title %}Queue Overview - Smart Queue Manager{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 2rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+  <div>
+    <h1 style="font-size: 2.2rem; margin-bottom: 0.5rem;">Queue Management</h1>
+    <p style="color: var(--text-muted);">Overview and manual management of all active queue entries.</p>
+  </div>
+  <a href="{{ url_for('admin_panel') }}" class="btn btn-primary">
+    <i class="fas fa-shield-alt"></i> Open Admin Command Center
+  </a>
+</div>
+
+<div class="glass-panel" style="padding: 2rem;">
+  {% if queue_items %}
+    <div class="table-responsive">
+      <table class="custom-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th>Contact</th>
+            <th>Priority</th>
+            <th>Details</th>
+            <th>Time</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in queue_items %}
+            <tr>
+              <td><strong>#{{ loop.index }}</strong></td>
+              <td>{{ item.name }}</td>
+              <td>{{ item.phone or 'N/A' }}</td>
+              <td>
+                <span class="priority-badge priority-{% if item.priority >= 4 %}high{% elif item.priority == 3 %}normal{% else %}low{% endif %}">
+                  Level {{ item.priority }}
+                </span>
+              </td>
+              <td>{{ item.details or '-' }}</td>
+              <td>{{ item.timestamp[:16].replace('T', ' ') if item.timestamp else '-' }}</td>
+              <td>
+                <button onclick="completeQueueItem('{{ item.id }}')" class="btn btn-success btn-sm">
+                  <i class="fas fa-check"></i> Complete
+                </button>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div style="text-align: center; padding: 3rem;">
+      <i class="fas fa-check-circle" style="font-size: 3rem; color: var(--success); margin-bottom: 1rem;"></i>
+      <h3>No items in the global queue</h3>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

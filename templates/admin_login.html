@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+
+{% block title %}Admin Portal Login - Smart Queue Manager{% endblock %}
+
+{% block content %}
+<div style="max-width: 440px; margin: 2rem auto 4rem;">
+  <div style="text-align: center; margin-bottom: 2rem;">
+    <div class="brand-icon" style="width: 60px; height: 60px; font-size: 1.6rem; margin: 0 auto 1.25rem;">
+      <i class="fas fa-user-shield"></i>
+    </div>
+    <h1 style="font-size: 2rem; margin-bottom: 0.5rem;">Admin Portal</h1>
+    <p style="color: var(--text-muted); font-size: 0.95rem;">
+      Sign in to manage active queues, call numbers, and view statistics.
+    </p>
+  </div>
+
+  <div class="glass-panel" style="padding: 2.25rem;">
+    {% if error %}
+      <div class="alert alert-danger" style="margin-bottom: 1.5rem;">
+        <i class="fas fa-exclamation-circle"></i>
+        <span>{{ error }}</span>
+      </div>
+    {% endif %}
+
+    <form action="{{ url_for('admin_login') }}" method="POST">
+      <div class="form-group">
+        <label class="form-label" for="adminUsername">
+          <i class="fas fa-user" style="color: var(--primary); margin-right: 0.35rem;"></i> Username
+        </label>
+        <input type="text" id="adminUsername" name="username" class="form-control" placeholder="admin" value="admin" required autocomplete="username">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="adminPassword">
+          <i class="fas fa-lock" style="color: var(--secondary); margin-right: 0.35rem;"></i> Password
+        </label>
+        <div style="position: relative;">
+          <input type="password" id="adminPassword" name="password" class="form-control" placeholder="••••••••" value="admin123" required autocomplete="current-password">
+          <button type="button" onclick="togglePasswordVisibility()" style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-dim); cursor: pointer;">
+            <i class="fas fa-eye" id="pwdToggleIcon"></i>
+          </button>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-lg" style="width: 100%; margin-top: 0.5rem;">
+        <i class="fas fa-sign-in-alt"></i> Access Dashboard
+      </button>
+    </form>
+
+    <!-- Helper note for development -->
+    <div style="margin-top: 1.75rem; padding: 0.85rem; background: rgba(255, 255, 255, 0.03); border: 1px dashed var(--border-light); border-radius: var(--radius-sm); font-size: 0.8rem; color: var(--text-dim); text-align: center;">
+      <i class="fas fa-info-circle" style="color: var(--primary);"></i> Default credentials: <strong>admin</strong> / <strong>admin123</strong>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function togglePasswordVisibility() {
+  const pwdInput = document.getElementById('adminPassword');
+  const icon = document.getElementById('pwdToggleIcon');
+  if (pwdInput.type === 'password') {
+    pwdInput.type = 'text';
+    icon.classList.remove('fa-eye');
+    icon.classList.add('fa-eye-slash');
+  } else {
+    pwdInput.type = 'password';
+    icon.classList.remove('fa-eye-slash');
+    icon.classList.add('fa-eye');
+  }
+}
+</script>
+{% endblock %}

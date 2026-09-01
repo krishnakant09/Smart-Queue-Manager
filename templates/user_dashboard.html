@@ -1,0 +1,154 @@
+{% extends 'base.html' %}
+
+{% block title %}My Dashboard - Smart Queue Manager{% endblock %}
+
+{% block content %}
+<!-- Dashboard Welcome Banner -->
+<div style="margin-bottom: 2.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1.5rem;">
+  <div>
+    <div class="live-indicator" style="margin-bottom: 0.35rem;">
+      <span class="live-dot"></span> Customer Portal
+    </div>
+    <h1 style="font-size: 2.2rem; margin-bottom: 0.25rem;">
+      Hello, {{ user.full_name or user.username }}!
+    </h1>
+    <p style="color: var(--text-muted); font-size: 0.95rem;">
+      <i class="fas fa-envelope" style="color: var(--secondary); margin-right: 0.25rem;"></i> {{ user.email }}
+      {% if user.phone %} &bull; <i class="fas fa-phone" style="color: var(--primary); margin-left: 0.5rem; margin-right: 0.25rem;"></i> {{ user.phone }}{% endif %}
+    </p>
+  </div>
+
+  <div style="display: flex; gap: 0.75rem;">
+    <a href="{{ url_for('index') }}" class="btn btn-primary">
+      <i class="fas fa-plus-circle"></i> Join Another Queue
+    </a>
+    <a href="{{ url_for('user_logout') }}" class="btn btn-secondary">
+      <i class="fas fa-sign-out-alt"></i> Sign Out
+    </a>
+  </div>
+</div>
+
+<!-- Active Tickets Section -->
+<div style="margin-bottom: 3rem;">
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem;">
+    <h2 style="font-size: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+      <i class="fas fa-ticket-alt" style="color: var(--primary);"></i> Active Digital Tickets
+      <span class="tab-badge" style="background: var(--primary-glow); color: #fff;">{{ active_tickets|length }}</span>
+    </h2>
+    <button onclick="window.location.reload()" class="btn btn-secondary btn-sm">
+      <i class="fas fa-sync-alt"></i> Refresh Status
+    </button>
+  </div>
+
+  {% if active_tickets %}
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 1.5rem;">
+      {% for t in active_tickets %}
+        <div class="glass-panel" style="padding: 1.75rem; border-color: rgba(99, 102, 241, 0.35); box-shadow: 0 0 25px var(--primary-glow); position: relative; overflow: hidden;">
+          <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, var(--primary), var(--secondary));"></div>
+          
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1.25rem;">
+            <div>
+              <span class="live-indicator" style="font-size: 0.75rem; margin-bottom: 0.25rem;"><span class="live-dot"></span> Waiting In Line</span>
+              <h3 style="font-size: 1.35rem; margin-top: 0.25rem;">{{ t.business.name }}</h3>
+              <div style="font-size: 0.85rem; color: var(--text-dim);">
+                <i class="fas fa-map-marker-alt"></i> {{ t.business.location or 'Main Location' }}
+              </div>
+            </div>
+            <div style="text-align: right;">
+              <span class="status-badge status-warning">Position #{{ t.position }}</span>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.25rem; text-align: center;">
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; font-weight: 600;">EST. WAIT TIME</div>
+              <div style="font-family: 'Outfit'; font-size: 1.4rem; font-weight: 700; color: #fbbf24;">{{ t.wait_time }}</div>
+            </div>
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; font-weight: 600;">YOUR SPOT</div>
+              <div style="font-family: 'Outfit'; font-size: 1.4rem; font-weight: 800; color: var(--primary);">#{{ t.position }} in line</div>
+            </div>
+          </div>
+
+          {% if t.item.details %}
+            <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.25rem; background: rgba(255, 255, 255, 0.02); padding: 0.6rem 0.85rem; border-radius: var(--radius-sm);">
+              <strong>Notes:</strong> {{ t.item.details }}
+            </div>
+          {% endif %}
+
+          <div style="display: flex; gap: 0.75rem;">
+            <a href="{{ url_for('business_queue', business_id=t.business.id) }}" class="btn btn-secondary btn-sm" style="flex: 1;">
+              <i class="fas fa-eye"></i> Venue Queue
+            </a>
+            <form action="{{ url_for('cancel_user_queue', item_id=t.item.id) }}" method="POST" onsubmit="return confirm('Are you sure you want to cancel your spot in this queue?');" style="flex: 1;">
+              <button type="submit" class="btn btn-danger btn-sm" style="width: 100%;">
+                <i class="fas fa-times"></i> Leave Queue
+              </button>
+            </form>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="glass-panel" style="padding: 2.5rem; text-align: center;">
+      <i class="fas fa-ticket-alt" style="font-size: 2.5rem; color: var(--text-dim); margin-bottom: 1rem;"></i>
+      <h3>You are not currently in any queues</h3>
+      <p style="color: var(--text-muted); font-size: 0.95rem; margin: 0.5rem auto 1.5rem; max-width: 460px;">
+        Browse available cafes, clinics, and businesses to take a digital number and save your place.
+      </p>
+      <a href="{{ url_for('index') }}" class="btn btn-primary">
+        <i class="fas fa-store"></i> Explore Open Queues
+      </a>
+    </div>
+  {% endif %}
+</div>
+
+<!-- Past Queue History Section -->
+<div class="glass-panel" style="padding: 2rem;">
+  <h2 style="font-size: 1.35rem; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
+    <i class="fas fa-history" style="color: var(--secondary);"></i> Past Queue History
+  </h2>
+
+  {% if past_tickets %}
+    <div class="table-responsive">
+      <table class="custom-table">
+        <thead>
+          <tr>
+            <th>Venue</th>
+            <th>Service Details</th>
+            <th>Check-in Time</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pt in past_tickets %}
+            <tr>
+              <td>
+                <div style="font-weight: 600;">{{ pt.business.name }}</div>
+                <div style="font-size: 0.75rem; color: var(--text-dim);">{{ pt.business.location or 'Main' }}</div>
+              </td>
+              <td>
+                <span style="color: var(--text-muted); font-size: 0.85rem;">{{ pt.item.details or 'General Service' }}</span>
+              </td>
+              <td>
+                <span style="color: var(--text-dim); font-size: 0.85rem;">{{ (pt.item.timestamp|string)[:16].replace('T', ' ') if pt.item.timestamp else '-' }}</span>
+              </td>
+              <td>
+                {% if pt.item.status == 'completed' %}
+                  <span class="status-badge status-success">Served</span>
+                {% else %}
+                  <span class="status-badge status-danger">Cancelled</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p style="color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 1.5rem 0;">
+      No past queue history yet.
+    </p>
+  {% endif %}
+</div>
+{% endblock %}

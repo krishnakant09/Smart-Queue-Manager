@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+
+{% block title %}Explore Businesses & Queues{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="hero-section">
+  <div class="hero-badge">
+    <i class="fas fa-bolt"></i> Real-Time Queue Management
+  </div>
+  <h1 class="hero-title">Skip the Line, Reclaim Your Time</h1>
+  <p class="hero-subtitle">
+    Browse open venues, join digital queues from your mobile phone, and receive instant SMS alerts as your turn arrives.
+  </p>
+  <div class="hero-actions">
+    <a href="#businessesList" class="btn btn-primary btn-lg">
+      <i class="fas fa-users"></i> Browse Active Queues
+    </a>
+    <a href="{{ url_for('check_position') }}" class="btn btn-secondary btn-lg">
+      <i class="fas fa-search-location"></i> Track Your Ticket
+    </a>
+  </div>
+</section>
+
+<!-- Filter & Search Section -->
+<section id="businessesList">
+  <div class="filters-bar">
+    <div class="search-box">
+      <i class="fas fa-search"></i>
+      <input type="text" id="businessSearch" placeholder="Search businesses, clinics, cafes..." autocomplete="off">
+    </div>
+    <div class="category-pills">
+      <button type="button" class="category-pill active" data-category="all">
+        <i class="fas fa-th-large"></i> All Categories
+      </button>
+      <button type="button" class="category-pill" data-category="cafe">
+        <i class="fas fa-coffee"></i> Cafes
+      </button>
+      <button type="button" class="category-pill" data-category="medical">
+        <i class="fas fa-hospital"></i> Healthcare
+      </button>
+      <button type="button" class="category-pill" data-category="retail">
+        <i class="fas fa-shopping-bag"></i> Retail
+      </button>
+      <button type="button" class="category-pill" data-category="government">
+        <i class="fas fa-landmark"></i> Services
+      </button>
+      <button type="button" class="category-pill" data-category="beauty">
+        <i class="fas fa-cut"></i> Salons
+      </button>
+      <button type="button" class="category-pill" data-category="financial">
+        <i class="fas fa-university"></i> Banking
+      </button>
+    </div>
+  </div>
+
+  <!-- Business Cards Grid -->
+  <div class="business-grid">
+    {% for b in businesses %}
+      <div class="business-card" data-category="{{ b.type }}">
+        <div>
+          <div class="card-header">
+            <div class="business-icon">
+              <i class="fas {{ b.icon or 'fa-store' }}"></i>
+            </div>
+            <div class="card-title-group">
+              <h2 class="card-title">{{ b.name }}</h2>
+              <div class="card-location">
+                <i class="fas fa-map-marker-alt"></i> {{ b.location or 'Main Branch' }}
+              </div>
+            </div>
+          </div>
+          
+          <p class="card-description" style="margin-top: 1rem;">
+            {{ b.description }}
+          </p>
+        </div>
+
+        <div>
+          <div class="card-metrics" style="margin-bottom: 1.25rem;">
+            <div class="metric-item">
+              <span class="metric-label">Status</span>
+              <div>
+                <span class="status-badge status-{{ b.status_color or 'info' }}">
+                  {{ b.status or 'Open' }}
+                </span>
+              </div>
+            </div>
+            <div class="metric-item">
+              <span class="metric-label">In Queue</span>
+              <span class="metric-value">{{ b.queue_size }} <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-dim);">waiting</span></span>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 0.75rem;">
+            <a href="{{ url_for('business_queue', business_id=b.id) }}" class="btn btn-primary" style="flex: 1;">
+              <i class="fas fa-user-plus"></i> Join Queue
+            </a>
+            <a href="{{ url_for('business_queue', business_id=b.id) }}" class="btn btn-secondary btn-icon" title="View Details">
+              <i class="fas fa-chevron-right"></i>
+            </a>
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <div class="glass-panel" style="grid-column: 1 / -1; text-align: center; padding: 3rem;">
+        <i class="fas fa-store-slash" style="font-size: 3rem; color: var(--text-dim); margin-bottom: 1rem;"></i>
+        <h3>No businesses found</h3>
+        <p style="color: var(--text-muted);">Please check back later or log in as admin to initialize sample data.</p>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

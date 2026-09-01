@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+
+{% block title %}Queue Ticket Confirmed - {{ business.name }}{% endblock %}
+
+{% block content %}
+<div style="max-width: 600px; margin: 1rem auto 3rem;">
+  <div style="text-align: center; margin-bottom: 2rem;">
+    <div style="display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: 50%; background: rgba(16, 185, 129, 0.15); color: var(--success); font-size: 2rem; margin-bottom: 1rem; border: 1px solid rgba(16, 185, 129, 0.3); box-shadow: 0 0 25px var(--success-glow);">
+      <i class="fas fa-check"></i>
+    </div>
+    <h1 style="font-size: 2.2rem; margin-bottom: 0.5rem;">You're in Line!</h1>
+    <p style="color: var(--text-muted); font-size: 1.05rem;">
+      Your spot at <strong style="color: #fff;">{{ business.name }}</strong> has been reserved.
+    </p>
+  </div>
+
+  <!-- Boarding Pass Style Digital Ticket -->
+  <div class="ticket-card">
+    <div class="ticket-notch-left"></div>
+    <div class="ticket-notch-right"></div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-light); padding-bottom: 1rem; margin-bottom: 1.5rem;">
+      <div style="text-align: left;">
+        <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-dim); font-weight: 700; letter-spacing: 0.05em;">VENUE</span>
+        <h3 style="font-size: 1.25rem;">{{ business.name }}</h3>
+      </div>
+      <div style="text-align: right;">
+        <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-dim); font-weight: 700; letter-spacing: 0.05em;">LOCATION</span>
+        <div style="color: var(--text-main); font-weight: 600; font-size: 0.95rem;">{{ business.location or 'Downtown' }}</div>
+      </div>
+    </div>
+
+    <!-- Animated Position Circular Display -->
+    <div class="ticket-number-display">
+      <span class="pos-label">Position</span>
+      <span class="pos-num">{{ position }}</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 1rem; margin: 1.5rem 0;">
+      <div>
+        <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; font-weight: 600;">EST. WAIT TIME</div>
+        <div style="font-size: 1.2rem; font-weight: 700; color: #fbbf24; font-family: 'Outfit';">{{ wait_time }}</div>
+      </div>
+      <div>
+        <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; font-weight: 600;">TOTAL WAITING</div>
+        <div style="font-size: 1.2rem; font-weight: 700; color: var(--text-main); font-family: 'Outfit';">{{ total_waiting }} people</div>
+      </div>
+    </div>
+
+    <div style="padding: 1rem; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: var(--radius-md); font-size: 0.85rem; color: #c7d2fe; margin-bottom: 1.5rem; text-align: left;">
+      <i class="fas fa-sms" style="color: var(--secondary); margin-right: 0.5rem; font-size: 1.1rem;"></i>
+      SMS alert scheduled to <strong>{{ phone }}</strong>. We will send you updates as your turn approaches.
+    </div>
+
+    <!-- Ticket Action Buttons -->
+    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+      <a href="{{ url_for('check_position', business_id=business.id) }}" class="btn btn-primary btn-lg" style="width: 100%;">
+        <i class="fas fa-search-location"></i> Monitor Live Position
+      </a>
+      <div style="display: flex; gap: 0.75rem;">
+        <button onclick="window.print()" class="btn btn-secondary" style="flex: 1;">
+          <i class="fas fa-print"></i> Print Ticket
+        </button>
+        <button onclick="copyToClipboard(window.location.href, this)" class="btn btn-secondary" style="flex: 1;">
+          <i class="fas fa-link"></i> Share Link
+        </button>
+      </div>
+      <a href="{{ url_for('business_queue', business_id=business.id) }}" class="btn btn-secondary btn-sm" style="margin-top: 0.5rem;">
+        <i class="fas fa-arrow-left"></i> Return to Queue Page
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}

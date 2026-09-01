@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Smart Queue Manager{% endblock %} - Real-Time Queue & Customer Flow</title>
+  <meta name="description" content="A comprehensive smart queue management system for cafes, medical clinics, retail stores, and service businesses.">
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <!-- Custom Design System -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <!-- Top Navigation Bar -->
+  <header class="navbar">
+    <div class="nav-container">
+      <a href="{{ url_for('index') }}" class="nav-brand" id="nav-brand-logo">
+        <div class="brand-icon">
+          <i class="fas fa-layer-group"></i>
+        </div>
+        <span>Smart<span style="color: var(--primary);">Queue</span></span>
+      </a>
+
+      <nav>
+        <ul class="nav-links">
+          <li>
+            <a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">
+              <i class="fas fa-store"></i> <span>Businesses</span>
+            </a>
+          </li>
+          <li>
+            <a href="{{ url_for('check_position') }}" class="nav-link {% if request.endpoint == 'check_position' %}active{% endif %}">
+              <i class="fas fa-ticket-alt"></i> <span>Check Position</span>
+            </a>
+          </li>
+          <li>
+            <a href="{{ url_for('statistics') }}" class="nav-link {% if request.endpoint == 'statistics' %}active{% endif %}">
+              <i class="fas fa-chart-line"></i> <span>Analytics</span>
+            </a>
+          </li>
+          {% if current_user %}
+            <li>
+              <a href="{{ url_for('user_dashboard') }}" class="nav-link {% if request.endpoint == 'user_dashboard' %}active{% endif %}">
+                <i class="fas fa-ticket-alt" style="color: var(--secondary);"></i> <span>My Tickets</span>
+              </a>
+            </li>
+            <li>
+              <a href="{{ url_for('user_logout') }}" class="nav-link" title="Sign Out">
+                <i class="fas fa-sign-out-alt"></i> <span>Sign Out ({{ current_user.username }})</span>
+              </a>
+            </li>
+          {% else %}
+            <li>
+              <a href="{{ url_for('user_login') }}" class="nav-link {% if request.endpoint == 'user_login' %}active{% endif %}">
+                <i class="fas fa-user"></i> <span>Sign In</span>
+              </a>
+            </li>
+            <li>
+              <a href="{{ url_for('user_register') }}" class="nav-link {% if request.endpoint == 'user_register' %}active{% endif %}">
+                <i class="fas fa-user-plus"></i> <span>Sign Up</span>
+              </a>
+            </li>
+          {% endif %}
+          <li>
+            {% if session.get('admin') %}
+              <a href="{{ url_for('admin_panel') }}" class="nav-link nav-btn-admin">
+                <i class="fas fa-shield-alt"></i> <span>Admin</span>
+              </a>
+            {% else %}
+              <a href="{{ url_for('admin_login') }}" class="nav-link nav-btn-admin" title="Venue Admin Login">
+                <i class="fas fa-lock"></i> <span>Admin</span>
+              </a>
+            {% endif %}
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Body Content -->
+  <main class="main-wrapper">
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-container">
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">
+              <i class="fas fa-{% if category == 'success' %}check-circle{% elif category == 'danger' %}exclamation-circle{% elif category == 'warning' %}exclamation-triangle{% else %}info-circle{% endif %}"></i>
+              <span>{{ message }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div>
+        <span class="live-indicator">
+          <span class="live-dot"></span> System Live & Operational
+        </span>
+      </div>
+      <div>
+        &copy; 2026 Smart Queue Manager &bull; Real-Time Customer Flow Engine
+      </div>
+      <div style="display: flex; gap: 1rem;">
+        <a href="{{ url_for('index') }}"><i class="fas fa-home"></i> Home</a>
+        <a href="{{ url_for('check_position') }}"><i class="fas fa-search"></i> Status</a>
+        <a href="{{ url_for('admin_login') }}"><i class="fas fa-user-shield"></i> Portal</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Main JavaScript -->
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>
