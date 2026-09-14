@@ -29,35 +29,37 @@
       <i class="fas fa-search"></i>
       <input type="text" id="businessSearch" placeholder="Search businesses, clinics, cafes..." autocomplete="off">
     </div>
-    <div class="category-pills">
-      <button type="button" class="category-pill active" data-category="all">
-        <i class="fas fa-th-large"></i> All Categories
-      </button>
-      <button type="button" class="category-pill" data-category="cafe">
-        <i class="fas fa-coffee"></i> Cafes
-      </button>
-      <button type="button" class="category-pill" data-category="medical">
-        <i class="fas fa-hospital"></i> Healthcare
-      </button>
-      <button type="button" class="category-pill" data-category="retail">
-        <i class="fas fa-shopping-bag"></i> Retail
-      </button>
-      <button type="button" class="category-pill" data-category="government">
-        <i class="fas fa-landmark"></i> Services
-      </button>
-      <button type="button" class="category-pill" data-category="beauty">
-        <i class="fas fa-cut"></i> Salons
-      </button>
-      <button type="button" class="category-pill" data-category="financial">
-        <i class="fas fa-university"></i> Banking
-      </button>
+    <div class="category-pills-container">
+      <div class="category-pills" id="categoryPillsList">
+        <button type="button" class="category-pill active" data-category="all">
+          <i class="fas fa-th-large"></i> <span>All Categories</span>
+        </button>
+        <button type="button" class="category-pill" data-category="cafe">
+          <i class="fas fa-coffee"></i> <span>Cafes</span>
+        </button>
+        <button type="button" class="category-pill" data-category="medical">
+          <i class="fas fa-hospital"></i> <span>Healthcare</span>
+        </button>
+        <button type="button" class="category-pill" data-category="retail">
+          <i class="fas fa-shopping-bag"></i> <span>Retail</span>
+        </button>
+        <button type="button" class="category-pill" data-category="government">
+          <i class="fas fa-landmark"></i> <span>Services</span>
+        </button>
+        <button type="button" class="category-pill" data-category="beauty">
+          <i class="fas fa-cut"></i> <span>Salons</span>
+        </button>
+        <button type="button" class="category-pill" data-category="financial">
+          <i class="fas fa-university"></i> <span>Banking</span>
+        </button>
+      </div>
     </div>
   </div>
 
   <!-- Business Cards Grid -->
-  <div class="business-grid">
+  <div class="business-grid" id="businessGrid">
     {% for b in businesses %}
-      <div class="business-card" data-category="{{ b.type }}">
+      <div class="business-card" data-category="{{ b.type or b.business_type or '' }}">
         <div>
           <div class="card-header">
             <div class="business-icon">

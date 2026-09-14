@@ -42,12 +42,46 @@ document.addEventListener('DOMContentLoaded', () => {
   const searchInput = document.getElementById('businessSearch');
   const categoryPills = document.querySelectorAll('.category-pill');
   const cards = document.querySelectorAll('.business-card');
+  const businessGrid = document.getElementById('businessGrid');
+  const pillsContainer = document.querySelector('.category-pills-container');
+  const pillsList = document.getElementById('categoryPillsList');
 
-  if (searchInput && cards.length) {
+  // Dynamic edge scroll indicators
+  if (pillsContainer && pillsList) {
+    function updatePillsScrollState() {
+      const isOverflowing = pillsList.scrollWidth > (pillsList.clientWidth + 4);
+      if (!isOverflowing) {
+        pillsContainer.classList.remove('has-overflow-left', 'has-overflow-right');
+        return;
+      }
+      const maxScroll = pillsList.scrollWidth - pillsList.clientWidth;
+      const scrollLeft = pillsList.scrollLeft;
+
+      if (scrollLeft > 8) {
+        pillsContainer.classList.add('has-overflow-left');
+      } else {
+        pillsContainer.classList.remove('has-overflow-left');
+      }
+
+      if (scrollLeft < maxScroll - 8) {
+        pillsContainer.classList.add('has-overflow-right');
+      } else {
+        pillsContainer.classList.remove('has-overflow-right');
+      }
+    }
+
+    pillsList.addEventListener('scroll', updatePillsScrollState, { passive: true });
+    window.addEventListener('resize', updatePillsScrollState);
+    setTimeout(updatePillsScrollState, 100);
+  }
+
+  if (cards.length) {
     function filterBusinesses() {
-      const query = searchInput.value.toLowerCase().trim();
+      const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
       const activePill = document.querySelector('.category-pill.active');
       const activeCat = activePill ? activePill.getAttribute('data-category') : 'all';
+
+      let visibleCount = 0;
 
       cards.forEach(card => {
         const title = card.querySelector('.card-title')?.textContent.toLowerCase() || '';
@@ -60,18 +94,56 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (matchesQuery && matchesCategory) {
           card.style.display = 'flex';
+          visibleCount++;
         } else {
           card.style.display = 'none';
         }
       });
+
+      // Handle dynamic empty state
+      let emptyNotice = document.getElementById('noFilterResultsNotice');
+      if (visibleCount === 0) {
+        if (!emptyNotice && businessGrid) {
+          emptyNotice = document.createElement('div');
+          emptyNotice.id = 'noFilterResultsNotice';
+          emptyNotice.className = 'glass-panel';
+          emptyNotice.style.gridColumn = '1 / -1';
+          emptyNotice.style.textAlign = 'center';
+          emptyNotice.style.padding = '3rem 1.5rem';
+          emptyNotice.innerHTML = `
+            <i class="fas fa-search-minus" style="font-size: 2.75rem; color: var(--text-dim); margin-bottom: 1rem; display: block;"></i>
+            <h3 style="font-size: 1.25rem; margin-bottom: 0.5rem;">No matching businesses</h3>
+            <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.25rem;">We couldn't find any venues matching your current filter criteria.</p>
+            <button type="button" class="btn btn-secondary btn-sm" id="resetFilterBtn">
+              <i class="fas fa-undo"></i> Show All Businesses
+            </button>
+          `;
+          businessGrid.appendChild(emptyNotice);
+          document.getElementById('resetFilterBtn')?.addEventListener('click', () => {
+            if (searchInput) searchInput.value = '';
+            categoryPills.forEach(p => p.classList.remove('active'));
+            const allPill = document.querySelector('.category-pill[data-category="all"]');
+            if (allPill) allPill.classList.add('active');
+            filterBusinesses();
+          });
+        }
+      } else if (emptyNotice) {
+        emptyNotice.remove();
+      }
     }
 
-    searchInput.addEventListener('input', filterBusinesses);
+    if (searchInput) {
+      searchInput.addEventListener('input', filterBusinesses);
+    }
 
     categoryPills.forEach(pill => {
       pill.addEventListener('click', () => {
         categoryPills.forEach(p => p.classList.remove('active'));
         pill.classList.add('active');
+        
+        // Auto-center clicked pill on mobile horizontally
+        pill.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        
         filterBusinesses();
       });
     });
