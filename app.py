@@ -50,15 +50,15 @@ queue_manager = QueueManager(replit_db)
 # Add a db alias to remain compatible with existing code during transition
 db = replit_db
 
-# Admin credentials - hardcoded for simplicity
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "admin123"
+# Admin credentials - configurable via environment
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 
 # Check if admin is set up
 def initialize_admin():
     if not db.get("admin_password"):
         # Set default admin password if not exists
-        db.set("admin_password", "admin123")  # Default password
+        db.set("admin_password", ADMIN_PASSWORD)
         logging.info("Admin password initialized")
 
 # Initialize sample businesses if none exist
@@ -295,7 +295,7 @@ def business_queue(business_id):
     """Individual business queue page"""
     # Get business details from PostgreSQL
     from models import Business, QueueStatistics, QueueItem
-    business_sql = Business.query.get(business_id)
+    business_sql = db_sql.session.get(Business, business_id)
     
     if not business_sql:
         flash("Business not found", "danger")
@@ -404,6 +404,7 @@ def join_queue(business_id):
     # Add to Replit DB for backward compatibility
     queue_prefix = f"{business_id}_"
     replit_item = {
+        'id': item_id,
         'name': name,
         'phone': phone,
         'details': details,
@@ -458,17 +459,30 @@ def user_register():
     """Customer user registration"""
     next_page = request.args.get('next') or request.form.get('next')
     if session.get('user_id'):
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.is_json:
+            return jsonify({'success': True, 'redirect': next_page or url_for('user_dashboard')})
         return redirect(next_page or url_for('user_dashboard'))
 
     error = None
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.is_json
+
     if request.method == 'POST':
         from models import User
-        full_name = request.form.get('full_name', '').strip()
-        username = request.form.get('username', '').strip()
-        email = request.form.get('email', '').strip().lower()
-        phone = request.form.get('phone', '').strip()
-        password = request.form.get('password', '')
-        confirm_password = request.form.get('confirm_password', '')
+        if request.is_json:
+            req_data = request.get_json() or {}
+            full_name = req_data.get('full_name', '').strip()
+            username = req_data.get('username', '').strip()
+            email = req_data.get('email', '').strip().lower()
+            phone = req_data.get('phone', '').strip()
+            password = req_data.get('password', '')
+            confirm_password = req_data.get('confirm_password', '')
+        else:
+            full_name = request.form.get('full_name', '').strip()
+            username = request.form.get('username', '').strip()
+            email = request.form.get('email', '').strip().lower()
+            phone = request.form.get('phone', '').strip()
+            password = request.form.get('password', '')
+            confirm_password = request.form.get('confirm_password', '')
 
         if not username or not email or not password:
             error = "Username, email, and password are required."
@@ -497,9 +511,15 @@ def user_register():
             session['user_id'] = new_user.id
             session['user_name'] = new_user.full_name or new_user.username
             flash("Welcome! Your account has been created successfully.", "success")
-            return redirect(next_page or url_for('user_dashboard'))
+            target_url = next_page or url_for('user_dashboard')
+            if is_ajax:
+                return jsonify({'success': True, 'redirect': target_url})
+            return redirect(target_url)
 
-    return render_template('user_register.html', error=error)
+        if is_ajax:
+            return jsonify({'success': False, 'error': error}), 400
+
+    return render_template('user_login.html', error=error, active_tab='register')
 
 @app.route('/user/login', methods=['GET', 'POST'])
 @app.route('/login', methods=['GET', 'POST'])
@@ -507,13 +527,22 @@ def user_login():
     """Customer user login"""
     next_page = request.args.get('next') or request.form.get('next')
     if session.get('user_id'):
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.is_json:
+            return jsonify({'success': True, 'redirect': next_page or url_for('user_dashboard')})
         return redirect(next_page or url_for('user_dashboard'))
 
     error = None
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.is_json
+
     if request.method == 'POST':
         from models import User
-        login_id = request.form.get('login_id', '').strip()
-        password = request.form.get('password', '')
+        if request.is_json:
+            req_data = request.get_json() or {}
+            login_id = req_data.get('login_id', '').strip()
+            password = req_data.get('password', '')
+        else:
+            login_id = request.form.get('login_id', '').strip()
+            password = request.form.get('password', '')
 
         if not login_id or not password:
             error = "Please provide your username/email and password."
@@ -527,11 +556,18 @@ def user_login():
                 session['user_id'] = user.id
                 session['user_name'] = user.full_name or user.username
                 flash(f"Welcome back, {user.full_name or user.username}!", "success")
-                return redirect(next_page or url_for('user_dashboard'))
+                target_url = next_page or url_for('user_dashboard')
+                if is_ajax:
+                    return jsonify({'success': True, 'redirect': target_url})
+                return redirect(target_url)
             else:
                 error = "Invalid username/email or password."
 
-    return render_template('user_login.html', error=error)
+        if is_ajax:
+            return jsonify({'success': False, 'error': error}), 400
+
+    active_tab = request.args.get('tab', 'login')
+    return render_template('user_login.html', error=error, active_tab=active_tab)
 
 @app.route('/user/logout')
 @app.route('/logout')
@@ -640,7 +676,7 @@ def cancel_user_queue(item_id):
     # Update stats
     stats = QueueStatistics.query.filter_by(business_id=queue_item.business_id).first()
     if stats:
-        stats.current_queue_length = max(0, stats.current_queue_length - 1)
+        stats.current_queue_length = max(0, (stats.current_queue_length or 0) - 1)
         biz = db_sql.session.get(Business, queue_item.business_id)
         if biz:
             biz.queue_size = stats.current_queue_length
@@ -651,6 +687,7 @@ def cancel_user_queue(item_id):
     try:
         queue_prefix = f"{queue_item.business_id}_"
         queue_manager.remove_item(item_id)
+        replit_db.delete(f"{queue_prefix}{item_id}")
     except Exception as e:
         logging.error(f"Error removing from Replit DB: {str(e)}")
 
@@ -670,7 +707,8 @@ def admin_login():
         username = request.form.get('username')
         password = request.form.get('password')
         
-        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        valid_password = (password == ADMIN_PASSWORD or password == db.get("admin_password"))
+        if username == ADMIN_USERNAME and valid_password:
             session['admin'] = True
             flash('Login successful', 'success')
             return redirect(url_for('admin_panel'))
@@ -699,8 +737,11 @@ def admin_panel():
     businesses = Business.query.all()
     businesses_list = [b.to_dict() for b in businesses]
     
-    # Get selected business ID from query parameter
+    # Get selected business ID from query parameter, defaulting to first business if available
     selected_business_id = request.args.get('business_id')
+    if not selected_business_id and businesses_list:
+        selected_business_id = businesses_list[0]['id']
+        
     selected_business = None
     queue_items = []
     stats = None
@@ -708,7 +749,7 @@ def admin_panel():
     
     if selected_business_id:
         # Get business details
-        business = Business.query.get(selected_business_id)
+        business = db_sql.session.get(Business, selected_business_id)
         if business:
             selected_business = business.to_dict()
             
@@ -722,6 +763,12 @@ def admin_panel():
             ).all()
             
             queue_items = [item.to_dict() for item in queue_items_sql]
+            
+            # Fallback to Replit DB if none found in SQL
+            if not queue_items:
+                queue_prefix = f"{selected_business_id}_"
+                queue_items = queue_manager.get_all_items(queue_prefix=queue_prefix)
+                
             queue_count = len(queue_items)
             
             # Get statistics
@@ -741,32 +788,77 @@ def admin_panel():
                          stats=stats,
                          queue_count=queue_count)
 
-
-
 @app.route('/manage')
 def manage():
     """Queue management page (admin only)"""
     if not session.get('admin'):
         flash('Admin login required', 'danger')
-        return redirect(url_for('index'))
+        return redirect(url_for('admin_login'))
     
-    queue_items = queue_manager.get_all_items()
+    from models import QueueItem
+    queue_items_sql = QueueItem.query.filter_by(status='waiting').order_by(
+        QueueItem.priority.desc(),
+        QueueItem.timestamp.asc()
+    ).all()
+    queue_items = [item.to_dict() for item in queue_items_sql]
+    if not queue_items:
+        queue_items = queue_manager.get_all_items()
+        
     return render_template('queue_management.html', queue_items=queue_items)
 
 @app.route('/statistics')
 def statistics():
     """Queue statistics page"""
-    stats = queue_manager.get_statistics()
-    history = queue_manager.get_history()
+    from models import QueueStatistics, QueueHistory
+    sql_history = QueueHistory.query.order_by(QueueHistory.completed_at.desc()).limit(50).all()
+    all_stats = QueueStatistics.query.all()
+    
+    if all_stats or sql_history:
+        history = [h.to_dict() for h in sql_history]
+        total_served = sum((s.total_served or 0) for s in all_stats)
+        current_queue = sum((s.current_queue_length or 0) for s in all_stats)
+        peak_queue = max([(s.peak_queue_length or 0) for s in all_stats] + [0])
+        weighted_wait_sum = sum((s.avg_wait_time or 0) * (s.total_served or 0) for s in all_stats)
+        overall_avg_wait = (weighted_wait_sum / total_served) if total_served > 0 else 0.0
+        
+        stats = {
+            'total_served': total_served,
+            'avg_wait_time': overall_avg_wait,
+            'peak_queue_length': peak_queue,
+            'current_queue_length': current_queue
+        }
+    else:
+        stats = queue_manager.get_statistics()
+        history = queue_manager.get_history()
+        
     return render_template('statistics.html', stats=stats, history=history)
 
 # API Endpoints
 @app.route('/api/queue', methods=['GET'])
 def get_queue():
     """Get all queue items"""
+    from models import QueueItem
     business_id = request.args.get('business_id')
-    queue_prefix = f"{business_id}_" if business_id else None
-    return jsonify(queue_manager.get_all_items(queue_prefix=queue_prefix))
+    if business_id:
+        items = QueueItem.query.filter_by(
+            business_id=business_id,
+            status='waiting'
+        ).order_by(
+            QueueItem.priority.desc(),
+            QueueItem.timestamp.asc()
+        ).all()
+        if items:
+            return jsonify([item.to_dict() for item in items])
+        queue_prefix = f"{business_id}_"
+        return jsonify(queue_manager.get_all_items(queue_prefix=queue_prefix))
+    else:
+        items = QueueItem.query.filter_by(status='waiting').order_by(
+            QueueItem.priority.desc(),
+            QueueItem.timestamp.asc()
+        ).all()
+        if items:
+            return jsonify([item.to_dict() for item in items])
+        return jsonify(queue_manager.get_all_items())
 
 @app.route('/api/queue', methods=['POST'])
 def add_to_queue():
@@ -786,7 +878,7 @@ def add_to_queue():
     if business_id:
         # Check if business exists
         from models import Business, QueueItem, QueueStatistics
-        business = Business.query.get(business_id)
+        business = db_sql.session.get(Business, business_id)
         
         if business:
             # Create new queue item
@@ -807,8 +899,8 @@ def add_to_queue():
             # Update statistics
             stats = QueueStatistics.query.filter_by(business_id=business_id).first()
             if stats:
-                stats.current_queue_length += 1
-                if stats.current_queue_length > stats.peak_queue_length:
+                stats.current_queue_length = (stats.current_queue_length or 0) + 1
+                if stats.current_queue_length > (stats.peak_queue_length or 0):
                     stats.peak_queue_length = stats.current_queue_length
             else:
                 # Create new statistics record if none exists
@@ -840,6 +932,7 @@ def add_to_queue():
             # Also add to Replit DB for backward compatibility during transition
             queue_prefix = f"{business_id}_"
             item = {
+                'id': item_id,
                 'name': data['name'],
                 'phone': data.get('phone', ''),
                 'details': data.get('details', ''),
@@ -853,6 +946,7 @@ def add_to_queue():
     else:
         # No business ID provided, just use Replit DB
         item = {
+            'id': item_id,
             'name': data['name'],
             'phone': data.get('phone', ''),
             'details': data.get('details', ''),
@@ -874,6 +968,34 @@ def update_queue_item(item_id):
     if not data:
         return jsonify({"error": "No data provided"}), 400
     
+    from models import QueueItem
+    queue_item = db_sql.session.get(QueueItem, item_id)
+    if queue_item:
+        if 'name' in data:
+            queue_item.name = data['name']
+        if 'phone' in data:
+            queue_item.phone = data['phone']
+        if 'details' in data:
+            queue_item.details = data['details']
+        if 'priority' in data:
+            try:
+                queue_item.priority = int(data['priority'])
+            except (ValueError, TypeError):
+                pass
+        if 'status' in data:
+            queue_item.status = data['status']
+            
+        db_sql.session.commit()
+        
+        # Also update in Replit DB if present
+        try:
+            queue_manager.update_item(item_id, data)
+        except Exception as e:
+            logging.error(f"Error updating in Replit DB: {str(e)}")
+            
+        return jsonify({"success": True})
+    
+    # Fallback to Replit DB
     success = queue_manager.update_item(item_id, data)
     if success:
         return jsonify({"success": True})
@@ -886,6 +1008,35 @@ def remove_from_queue(item_id):
     if not session.get('admin'):
         return jsonify({"error": "Admin access required"}), 403
     
+    from models import QueueItem, QueueStatistics, Business
+    queue_item = db_sql.session.get(QueueItem, item_id)
+    if queue_item:
+        business_id = queue_item.business_id
+        # Mark as cancelled
+        queue_item.status = 'cancelled'
+        queue_item.completed_at = datetime.now()
+        
+        # Update statistics
+        stats = QueueStatistics.query.filter_by(business_id=business_id).first()
+        if stats:
+            stats.current_queue_length = max(0, (stats.current_queue_length or 0) - 1)
+            biz = db_sql.session.get(Business, business_id)
+            if biz:
+                biz.queue_size = stats.current_queue_length
+        
+        db_sql.session.commit()
+        
+        # Also clean up from Replit DB if present
+        try:
+            queue_prefix = f"{business_id}_"
+            queue_manager.remove_item(item_id)
+            replit_db.delete(f"{queue_prefix}{item_id}")
+        except Exception as e:
+            logging.error(f"Error removing from Replit DB: {str(e)}")
+            
+        return jsonify({"success": True})
+    
+    # Fallback to Replit DB
     success = queue_manager.remove_item(item_id)
     if success:
         return jsonify({"success": True})
@@ -902,7 +1053,7 @@ def complete_queue_item(item_id):
     from models import QueueItem, QueueStatistics, QueueHistory, Business
     
     # First, try to find the item in PostgreSQL
-    queue_item = QueueItem.query.get(item_id)
+    queue_item = db_sql.session.get(QueueItem, item_id)
     
     if queue_item:
         # Item found in PostgreSQL, mark as completed
@@ -933,20 +1084,20 @@ def complete_queue_item(item_id):
         stats = QueueStatistics.query.filter_by(business_id=business_id).first()
         if stats:
             # Update current queue length
-            stats.current_queue_length = max(0, stats.current_queue_length - 1)
+            stats.current_queue_length = max(0, (stats.current_queue_length or 0) - 1)
             
             # Update total served
-            stats.total_served += 1
+            stats.total_served = (stats.total_served or 0) + 1
             
             # Update average wait time
-            if stats.avg_wait_time == 0:
+            if not stats.avg_wait_time or stats.avg_wait_time == 0:
                 stats.avg_wait_time = wait_time_minutes
             else:
                 # Weighted average calculation
                 stats.avg_wait_time = (stats.avg_wait_time * (stats.total_served - 1) + wait_time_minutes) / stats.total_served
             
             # Update business queue size
-            business = Business.query.get(business_id)
+            business = db_sql.session.get(Business, business_id)
             if business:
                 business.queue_size = stats.current_queue_length
         
@@ -955,7 +1106,9 @@ def complete_queue_item(item_id):
         
         # Also update in Replit DB for backward compatibility
         try:
+            queue_prefix = f"{business_id}_"
             queue_manager.complete_item(item_id)
+            replit_db.delete(f"{queue_prefix}{item_id}")
         except Exception as e:
             logging.error(f"Error updating item in Replit DB: {str(e)}")
         
@@ -963,7 +1116,7 @@ def complete_queue_item(item_id):
         if queue_item.phone:
             try:
                 from notifications import send_turn_notification
-                business = Business.query.get(business_id)
+                business = db_sql.session.get(Business, business_id)
                 business_name = business.name if business else "Business"
                 send_turn_notification(name, business_name, queue_item.phone)
             except Exception as e:
@@ -981,6 +1134,28 @@ def complete_queue_item(item_id):
 @app.route('/api/queue/statistics', methods=['GET'])
 def get_statistics():
     """Get queue statistics"""
+    from models import QueueStatistics
+    business_id = request.args.get('business_id')
+    if business_id:
+        stats = QueueStatistics.query.filter_by(business_id=business_id).first()
+        if stats:
+            return jsonify(stats.to_dict())
+        queue_prefix = f"{business_id}_"
+        return jsonify(queue_manager.get_statistics(queue_prefix=queue_prefix))
+    
+    all_stats = QueueStatistics.query.all()
+    if all_stats:
+        total_served = sum((s.total_served or 0) for s in all_stats)
+        current_queue = sum((s.current_queue_length or 0) for s in all_stats)
+        peak_queue = max([(s.peak_queue_length or 0) for s in all_stats] + [0])
+        weighted_wait_sum = sum((s.avg_wait_time or 0) * (s.total_served or 0) for s in all_stats)
+        overall_avg_wait = (weighted_wait_sum / total_served) if total_served > 0 else 0.0
+        return jsonify({
+            'total_served': total_served,
+            'avg_wait_time': overall_avg_wait,
+            'peak_queue_length': peak_queue,
+            'current_queue_length': current_queue
+        })
     return jsonify(queue_manager.get_statistics())
 
 @app.route('/api/queue/reset', methods=['POST'])
@@ -1030,7 +1205,7 @@ def reset_queue():
                 stats.current_queue_length = 0
                 
                 # Update business queue size
-                business = Business.query.get(business_id)
+                business = db_sql.session.get(Business, business_id)
                 if business:
                     business.queue_size = 0
         
@@ -1102,7 +1277,7 @@ def check_position():
     
     if request.method == 'POST':
         # Get form data
-        phone = request.form.get('phone')
+        phone = (request.form.get('phone') or '').strip()
         business_id = request.form.get('business_id')
         
         if not phone or not business_id:
@@ -1112,7 +1287,7 @@ def check_position():
                                   business_id=business_id)
         
         # Get business details
-        business = Business.query.get(business_id)
+        business = db_sql.session.get(Business, business_id)
         if not business:
             return render_template('check_position.html', 
                                   error="Business not found",
@@ -1123,7 +1298,7 @@ def check_position():
             business_id=business_id,
             phone=phone,
             status='waiting'
-        ).first()
+        ).order_by(QueueItem.timestamp.asc()).first()
         
         if not queue_item:
             # Try to find in Replit DB as fallback
@@ -1131,7 +1306,7 @@ def check_position():
             replit_items = queue_manager.get_all_items(queue_prefix=queue_prefix)
             
             for idx, item in enumerate(replit_items):
-                if item.get('phone') == phone and item.get('status') == 'waiting':
+                if (item.get('phone') or '').strip() == phone and item.get('status') == 'waiting':
                     # Found in Replit DB
                     position = idx + 1
                     

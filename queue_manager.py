@@ -48,6 +48,8 @@ class QueueManager:
         all_data = self.db.get_all(prefix)
         
         for key, value in all_data.items():
+            if key.endswith('stats') or key == self.stats_key or not isinstance(value, dict) or 'total_served' in value:
+                continue
             if value.get('status') != 'completed':  # Only include active items
                 item_id = key.replace(prefix, '')
                 value['id'] = item_id
@@ -67,7 +69,7 @@ class QueueManager:
         Returns:
             str: The ID of the added item
         """
-        item_id = str(uuid.uuid4())
+        item_id = item.get('id') if (isinstance(item, dict) and item.get('id')) else str(uuid.uuid4())
         prefix = queue_prefix if queue_prefix else self.queue_prefix
         key = f"{prefix}{item_id}"
         

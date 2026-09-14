@@ -93,9 +93,18 @@
           </div>
 
           <div style="display: flex; gap: 0.75rem;">
-            <a href="{{ url_for('business_queue', business_id=b.id) }}" class="btn btn-primary" style="flex: 1;">
-              <i class="fas fa-user-plus"></i> Join Queue
-            </a>
+            {% if current_user %}
+              <a href="{{ url_for('business_queue', business_id=b.id) }}" class="btn btn-primary" style="flex: 1;">
+                <i class="fas fa-user-plus"></i> Join Queue
+              </a>
+            {% else %}
+              <a href="{{ url_for('user_login', next=url_for('business_queue', business_id=b.id)) }}" 
+                 class="btn btn-primary" 
+                 style="flex: 1;" 
+                 onclick="openAuthModal(event, '{{ b.id }}', '{{ b.name|escape }}')">
+                <i class="fas fa-user-plus"></i> Join Queue
+              </a>
+            {% endif %}
             <a href="{{ url_for('business_queue', business_id=b.id) }}" class="btn btn-secondary btn-icon" title="View Details">
               <i class="fas fa-chevron-right"></i>
             </a>

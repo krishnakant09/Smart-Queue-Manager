@@ -78,7 +78,7 @@
 </div>
 
 <!-- Main Two-Column Layout: Form & Current Queue -->
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 2rem; align-items: start;">
+<div class="responsive-two-col" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 2rem; align-items: start;">
   
   <!-- Join Queue Form Card -->
   <div class="glass-panel" style="padding: 2rem;">
@@ -136,10 +136,16 @@
         </p>
 
         <div style="display: flex; flex-direction: column; gap: 0.85rem;">
-          <a href="{{ url_for('user_login', next=url_for('business_queue', business_id=business.id)) }}" class="btn btn-primary btn-lg" style="width: 100%;">
+          <a href="{{ url_for('user_login', next=url_for('business_queue', business_id=business.id)) }}" 
+             class="btn btn-primary btn-lg" 
+             style="width: 100%;"
+             onclick="openAuthModal(event, '{{ business.id }}', '{{ business.name|escape }}', 'login')">
             <i class="fas fa-sign-in-alt"></i> Sign In to Join Line
           </a>
-          <a href="{{ url_for('user_register', next=url_for('business_queue', business_id=business.id)) }}" class="btn btn-secondary btn-lg" style="width: 100%;">
+          <a href="{{ url_for('user_register', next=url_for('business_queue', business_id=business.id)) }}" 
+             class="btn btn-secondary btn-lg" 
+             style="width: 100%;"
+             onclick="openAuthModal(event, '{{ business.id }}', '{{ business.name|escape }}', 'register')">
             <i class="fas fa-user-plus"></i> Create an Account
           </a>
         </div>

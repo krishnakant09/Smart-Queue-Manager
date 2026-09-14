@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>{% block title %}Smart Queue Manager{% endblock %} - Real-Time Queue & Customer Flow</title>
   <meta name="description" content="A comprehensive smart queue management system for cafes, medical clinics, retail stores, and service businesses.">
   
@@ -29,7 +29,8 @@
         <span>Smart<span style="color: var(--primary);">Queue</span></span>
       </a>
 
-      <nav>
+      <!-- Desktop Nav -->
+      <nav class="desktop-nav">
         <ul class="nav-links">
           <li>
             <a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">
@@ -54,7 +55,7 @@
             </li>
             <li>
               <a href="{{ url_for('user_logout') }}" class="nav-link" title="Sign Out">
-                <i class="fas fa-sign-out-alt"></i> <span>Sign Out ({{ current_user.username }})</span>
+                <i class="fas fa-sign-out-alt"></i> <span>Sign Out</span>
               </a>
             </li>
           {% else %}
@@ -82,8 +83,99 @@
           </li>
         </ul>
       </nav>
+
+      <!-- Mobile Hamburger Button -->
+      <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation menu" aria-expanded="false">
+        <span class="hamburger-bar"></span>
+        <span class="hamburger-bar"></span>
+        <span class="hamburger-bar"></span>
+      </button>
     </div>
   </header>
+
+  <!-- Mobile Navigation Drawer & Backdrop -->
+  <div class="mobile-nav-backdrop" id="mobileNavBackdrop"></div>
+  <div class="mobile-nav-drawer" id="mobileNavDrawer" aria-hidden="true">
+    <div class="mobile-nav-header">
+      <div class="nav-brand">
+        <div class="brand-icon">
+          <i class="fas fa-layer-group"></i>
+        </div>
+        <span>Smart<span style="color: var(--primary);">Queue</span></span>
+      </div>
+      <button class="mobile-nav-close" id="mobileNavClose" aria-label="Close navigation menu">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
+    {% if current_user %}
+      <div class="mobile-user-card">
+        <div class="mobile-user-avatar">
+          <i class="fas fa-user"></i>
+        </div>
+        <div class="mobile-user-info">
+          <div class="mobile-user-name">{{ current_user.full_name or current_user.username }}</div>
+          <div class="mobile-user-email">{{ current_user.email }}</div>
+        </div>
+      </div>
+    {% endif %}
+
+    <ul class="mobile-nav-links">
+      <li>
+        <a href="{{ url_for('index') }}" class="mobile-nav-link {% if request.endpoint == 'index' %}active{% endif %}">
+          <i class="fas fa-store"></i> <span>All Businesses</span>
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('check_position') }}" class="mobile-nav-link {% if request.endpoint == 'check_position' %}active{% endif %}">
+          <i class="fas fa-search-location"></i> <span>Check Position</span>
+        </a>
+      </li>
+      <li>
+        <a href="{{ url_for('statistics') }}" class="mobile-nav-link {% if request.endpoint == 'statistics' %}active{% endif %}">
+          <i class="fas fa-chart-line"></i> <span>Live Analytics</span>
+        </a>
+      </li>
+
+      {% if current_user %}
+        <li>
+          <a href="{{ url_for('user_dashboard') }}" class="mobile-nav-link {% if request.endpoint == 'user_dashboard' %}active{% endif %}">
+            <i class="fas fa-ticket-alt" style="color: var(--secondary);"></i> <span>My Digital Tickets</span>
+          </a>
+        </li>
+        <li style="margin-top: 0.5rem;">
+          <a href="{{ url_for('user_logout') }}" class="mobile-nav-link mobile-nav-signout">
+            <i class="fas fa-sign-out-alt"></i> <span>Sign Out</span>
+          </a>
+        </li>
+      {% else %}
+        <li style="margin-top: 0.5rem;">
+          <a href="{{ url_for('user_login') }}" class="mobile-nav-link {% if request.endpoint == 'user_login' %}active{% endif %}">
+            <i class="fas fa-sign-in-alt"></i> <span>Sign In</span>
+          </a>
+        </li>
+        <li>
+          <a href="{{ url_for('user_register') }}" class="mobile-nav-link {% if request.endpoint == 'user_register' %}active{% endif %}">
+            <i class="fas fa-user-plus"></i> <span>Create Account</span>
+          </a>
+        </li>
+      {% endif %}
+
+      <li class="mobile-nav-divider"></li>
+
+      <li>
+        {% if session.get('admin') %}
+          <a href="{{ url_for('admin_panel') }}" class="mobile-nav-link mobile-nav-admin">
+            <i class="fas fa-shield-alt"></i> <span>Admin Command Center</span>
+          </a>
+        {% else %}
+          <a href="{{ url_for('admin_login') }}" class="mobile-nav-link mobile-nav-admin">
+            <i class="fas fa-lock"></i> <span>Venue Admin Portal</span>
+          </a>
+        {% endif %}
+      </li>
+    </ul>
+  </div>
 
   <!-- Main Body Content -->
   <main class="main-wrapper">
@@ -122,6 +214,132 @@
       </div>
     </div>
   </footer>
+
+  {% if not current_user %}
+  <!-- Global Sign In / Sign Up Modal -->
+  <div class="auth-modal-backdrop" id="authModal" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="auth-modal-box">
+      <button type="button" class="auth-modal-close" onclick="closeAuthModal()" aria-label="Close dialog">&times;</button>
+      
+      <div class="auth-modal-header">
+        <div class="brand-icon">
+          <i class="fas fa-ticket-alt"></i>
+        </div>
+        <h2 class="auth-modal-title" id="authModalTitle">Join Digital Queue</h2>
+        <p class="auth-modal-subtitle" id="authModalSubtitle">
+          Sign in or create an account to take your ticket and track your turn in line.
+        </p>
+      </div>
+
+      <!-- Segmented Tabs -->
+      <div class="auth-tabs" role="tablist">
+        <button type="button" class="auth-tab-btn active" id="tabBtnLogin" onclick="switchAuthTab('login')" role="tab" aria-selected="true">
+          <i class="fas fa-sign-in-alt"></i> Sign In
+        </button>
+        <button type="button" class="auth-tab-btn" id="tabBtnRegister" onclick="switchAuthTab('register')" role="tab" aria-selected="false">
+          <i class="fas fa-user-plus"></i> Create Account
+        </button>
+      </div>
+
+      <!-- Error Alert in Modal -->
+      <div id="authModalAlert" class="alert alert-danger" style="display: none; margin-bottom: 1.25rem;">
+        <i class="fas fa-exclamation-circle"></i>
+        <span id="authModalAlertText"></span>
+      </div>
+
+      <!-- Sign In Tab Panel -->
+      <div class="auth-panel active" id="authPanelLogin" role="tabpanel">
+        <form id="modalLoginForm" action="{{ url_for('user_login') }}" method="POST">
+          <input type="hidden" name="next" id="modalLoginNext" value="">
+          
+          <div class="form-group">
+            <label class="form-label" for="modalLoginId">
+              <i class="fas fa-user" style="color: var(--primary); margin-right: 0.35rem;"></i> Username or Email
+            </label>
+            <input type="text" id="modalLoginId" name="login_id" class="form-control" placeholder="username or email" required autocomplete="username">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="modalLoginPwd">
+              <i class="fas fa-lock" style="color: var(--secondary); margin-right: 0.35rem;"></i> Password
+            </label>
+            <div style="position: relative;">
+              <input type="password" id="modalLoginPwd" name="password" class="form-control" placeholder="••••••••" required autocomplete="current-password">
+              <button type="button" onclick="toggleModalPwd('modalLoginPwd', 'modalLoginPwdIcon')" style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-dim); cursor: pointer;">
+                <i class="fas fa-eye" id="modalLoginPwdIcon"></i>
+              </button>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-lg" id="modalLoginSubmitBtn" style="width: 100%; margin-top: 0.5rem;">
+            <i class="fas fa-sign-in-alt"></i> Sign In & Join Queue
+          </button>
+        </form>
+
+        <div class="auth-form-footer">
+          Don't have an account yet? <a href="javascript:void(0)" onclick="switchAuthTab('register')">Create an account</a>
+        </div>
+      </div>
+
+      <!-- Create Account Tab Panel -->
+      <div class="auth-panel" id="authPanelRegister" role="tabpanel">
+        <form id="modalRegisterForm" action="{{ url_for('user_register') }}" method="POST">
+          <input type="hidden" name="next" id="modalRegisterNext" value="">
+
+          <div class="form-group">
+            <label class="form-label" for="modalRegFullName">
+              <i class="fas fa-id-card" style="color: var(--primary); margin-right: 0.35rem;"></i> Full Name
+            </label>
+            <input type="text" id="modalRegFullName" name="full_name" class="form-control" placeholder="e.g. Jordan Miller" required autocomplete="name">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="modalRegUsername">
+              <i class="fas fa-user" style="color: var(--primary); margin-right: 0.35rem;"></i> Username *
+            </label>
+            <input type="text" id="modalRegUsername" name="username" class="form-control" placeholder="e.g. jordanm" required autocomplete="username">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="modalRegEmail">
+              <i class="fas fa-envelope" style="color: var(--secondary); margin-right: 0.35rem;"></i> Email Address *
+            </label>
+            <input type="email" id="modalRegEmail" name="email" class="form-control" placeholder="jordan@example.com" required autocomplete="email">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="modalRegPhone">
+              <i class="fas fa-mobile-alt" style="color: var(--secondary); margin-right: 0.35rem;"></i> Phone Number (for SMS tickets)
+            </label>
+            <input type="tel" id="modalRegPhone" name="phone" class="form-control" placeholder="+1 (555) 019-2834" autocomplete="tel">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="modalRegPwd">
+              <i class="fas fa-lock" style="color: var(--accent-purple); margin-right: 0.35rem;"></i> Password *
+            </label>
+            <input type="password" id="modalRegPwd" name="password" class="form-control" placeholder="At least 6 characters" required autocomplete="new-password">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="modalRegConfirmPwd">
+              <i class="fas fa-check-double" style="color: var(--accent-purple); margin-right: 0.35rem;"></i> Confirm Password *
+            </label>
+            <input type="password" id="modalRegConfirmPwd" name="confirm_password" class="form-control" placeholder="Repeat your password" required autocomplete="new-password">
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-lg" id="modalRegisterSubmitBtn" style="width: 100%; margin-top: 0.5rem;">
+            <i class="fas fa-user-check"></i> Create Account & Join
+          </button>
+        </form>
+
+        <div class="auth-form-footer">
+          Already have an account? <a href="javascript:void(0)" onclick="switchAuthTab('login')">Sign In here</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   <!-- Main JavaScript -->
   <script src="{{ url_for('static', filename='js/main.js') }}"></script>
