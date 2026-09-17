@@ -15,9 +15,5 @@
       "src": "/(.*)",
       "dest": "main.py"
     }
-  ],
-  "env": {
-    "FLASK_ENV": "production",
-    "SESSION_SECRET": "your-session-secret-key-replace-this-in-vercel-dashboard"
-  }
+  ]
 }

@@ -33,13 +33,20 @@
     <!-- Animated Position Circular Display -->
     <div class="ticket-number-display">
       <span class="pos-label">Position</span>
-      <span class="pos-num">{{ position }}</span>
+      <span class="pos-num" id="confirmPosNum">{{ position }}</span>
     </div>
 
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 1rem; margin: 1.5rem 0;">
       <div>
-        <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; font-weight: 600;">EST. WAIT TIME</div>
-        <div style="font-size: 1.2rem; font-weight: 700; color: #fbbf24; font-family: 'Outfit';">{{ wait_time }}</div>
+        <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; font-weight: 600;">
+          AI ESTIMATED WAIT
+        </div>
+        <div style="font-size: 1.2rem; font-weight: 700; color: #fbbf24; font-family: 'Outfit';">
+          {{ wait_time }}
+          {% if prediction and prediction.confidence %}
+            <span style="font-size: 0.7rem; color: #34d399; display: block; font-weight: 600;">{{ prediction.confidence }} AI Confidence</span>
+          {% endif %}
+        </div>
       </div>
       <div>
         <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; font-weight: 600;">TOTAL WAITING</div>
@@ -49,14 +56,25 @@
 
     <div style="padding: 1rem; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: var(--radius-md); font-size: 0.85rem; color: #c7d2fe; margin-bottom: 1.5rem; text-align: left;">
       <i class="fas fa-sms" style="color: var(--secondary); margin-right: 0.5rem; font-size: 1.1rem;"></i>
-      SMS alert scheduled to <strong>{{ phone }}</strong>. We will send you updates as your turn approaches.
+      SMS alert scheduled to <strong>{{ phone }}</strong>. We will text or call you as your turn approaches.
     </div>
 
     <!-- Ticket Action Buttons -->
     <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-      <a href="{{ url_for('check_position', business_id=business.id) }}" class="btn btn-primary btn-lg" style="width: 100%;">
-        <i class="fas fa-search-location"></i> Monitor Live Position
-      </a>
+      {% if item_id %}
+        <a href="{{ url_for('ticket_pass', item_id=item_id) }}" class="btn btn-primary btn-lg" style="width: 100%;">
+          <i class="fas fa-wallet"></i> Open Digital Wallet Pass
+        </a>
+        <button onclick="deferMyTurn('{{ item_id }}')" id="confirmDeferBtn" class="btn btn-warning" style="width: 100%;">
+          <i class="fas fa-running"></i> I'm Running Late (+10 min)
+        </button>
+        <div id="deferConfirmMsg" style="font-size: 0.85rem; color: #fbbf24; text-align: center; display: none;"></div>
+      {% else %}
+        <a href="{{ url_for('check_position', business_id=business.id) }}" class="btn btn-primary btn-lg" style="width: 100%;">
+          <i class="fas fa-search-location"></i> Monitor Live Position
+        </a>
+      {% endif %}
+
       <div style="display: flex; gap: 0.75rem;">
         <button onclick="window.print()" class="btn btn-secondary" style="flex: 1;">
           <i class="fas fa-print"></i> Print Ticket
@@ -71,4 +89,39 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+async function deferMyTurn(itemId) {
+  const btn = document.getElementById('confirmDeferBtn');
+  const msg = document.getElementById('deferConfirmMsg');
+  if (!confirm('Delay your turn by 10 minutes?')) return;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Delaying...';
+  try {
+    const res = await fetch(`/api/queue/${itemId}/defer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (data.success) {
+      msg.style.display = 'block';
+      msg.textContent = data.message;
+      btn.innerHTML = '<i class="fas fa-check"></i> Delayed (+10m)';
+      const posNum = document.getElementById('confirmPosNum');
+      if (posNum && data.new_position) posNum.textContent = data.new_position;
+    } else {
+      alert(data.error || 'Could not delay turn');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-running"></i> I\'m Running Late (+10 min)';
+    }
+  } catch (e) {
+    console.error(e);
+    alert('Error delaying turn');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-running"></i> I\'m Running Late (+10 min)';
+  }
+}
+</script>
 {% endblock %}

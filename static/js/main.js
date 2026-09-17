@@ -503,3 +503,91 @@ async function resetBusinessQueue(businessId) {
   }
 }
 
+// ==========================================
+// TTS Voice Announcement & Advanced Admin Ops
+// ==========================================
+
+function speakQueueCall(text) {
+  playQueueChime();
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel(); // Cancel any ongoing speech
+    setTimeout(() => {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.95;
+      utterance.pitch = 1.05;
+      
+      // Select an English voice if available
+      const voices = window.speechSynthesis.getVoices();
+      const engVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Samantha') || v.name.includes('Jenny') || v.default));
+      if (engVoice) utterance.voice = engVoice;
+      
+      window.speechSynthesis.speak(utterance);
+    }, 450);
+  } else {
+    console.log('Text to speech not supported by this browser');
+  }
+}
+
+async function callQueueItem(itemId, businessId) {
+  const counterSelect = document.getElementById('activeCounterSelect');
+  const counter = counterSelect ? counterSelect.value : 'Counter 1';
+
+  try {
+    const res = await fetch(`/api/queue/${itemId}/call`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ counter: counter })
+    });
+    const data = await res.json();
+    if (data.success) {
+      speakQueueCall(data.speech_text || `Ticket called to ${counter}`);
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } else {
+      alert(data.error || 'Failed to call customer');
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Error calling customer');
+  }
+}
+
+async function markNoShow(itemId, businessId) {
+  if (!confirm('Mark this customer as No-Show? They can still be recalled if they arrive late.')) return;
+  try {
+    const res = await fetch(`/api/queue/${itemId}/no-show`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (data.success) {
+      window.location.reload();
+    } else {
+      alert(data.error || 'Failed to update ticket');
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Error updating ticket');
+  }
+}
+
+async function recallCustomer(itemId, businessId) {
+  try {
+    const res = await fetch(`/api/queue/${itemId}/recall`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (data.success) {
+      window.location.reload();
+    } else {
+      alert(data.error || 'Failed to recall customer');
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Error recalling customer');
+  }
+}
+
+

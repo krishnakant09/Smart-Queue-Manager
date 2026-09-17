@@ -255,13 +255,62 @@ def initialize_businesses():
         db_sql.session.commit()
         logging.info("Sample businesses initialized in PostgreSQL")
 
+def ensure_database_schema():
+    """Ensure newly added columns and tables are safely migrated in SQLite/Postgres"""
+    from sqlalchemy import inspect, text
+    inspector = inspect(db_sql.engine)
+    
+    migrations = {
+        'users': [
+            ('role', "VARCHAR(20) DEFAULT 'customer'"),
+            ('business_id', "VARCHAR(50)")
+        ],
+        'businesses': [
+            ('counters', "TEXT DEFAULT 'Counter 1, Counter 2, Desk A'"),
+            ('categories', "TEXT DEFAULT 'General Inquiry:5, Standard Service:15, Priority Support:10'"),
+            ('max_capacity', "INTEGER DEFAULT 50"),
+            ('is_paused', "BOOLEAN DEFAULT 0")
+        ],
+        'queue_items': [
+            ('service_category', "VARCHAR(100) DEFAULT 'General Inquiry'"),
+            ('assigned_counter', "VARCHAR(50)"),
+            ('delay_count', "INTEGER DEFAULT 0"),
+            ('delay_until', "DATETIME"),
+            ('called_at', "DATETIME")
+        ],
+        'queue_statistics': [
+            ('csat_score', "FLOAT DEFAULT 5.0"),
+            ('csat_count', "INTEGER DEFAULT 0")
+        ],
+        'queue_history': [
+            ('service_category', "VARCHAR(100)"),
+            ('counter', "VARCHAR(50)")
+        ]
+    }
+    
+    with db_sql.engine.connect() as conn:
+        for table_name, columns in migrations.items():
+            if inspector.has_table(table_name):
+                existing_cols = [c['name'] for c in inspector.get_columns(table_name)]
+                for col_name, col_type in columns:
+                    if col_name not in existing_cols:
+                        try:
+                            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
+                            conn.commit()
+                            logging.info(f"Added missing column {col_name} to {table_name}")
+                        except Exception as ex:
+                            logging.warning(f"Could not add column {col_name} to {table_name}: {ex}")
+
 # Create database tables before initialization
 with app.app_context():
     # Import models to ensure they're registered with SQLAlchemy
-    from models import User, Business, QueueItem, QueueStatistics, QueueHistory
+    from models import User, Business, QueueItem, QueueStatistics, QueueHistory, QueueFeedback
     
-    # Create all tables
+    # Create any missing tables (e.g. queue_feedback)
     db_sql.create_all()
+    
+    # Safely migrate existing tables for newly added columns
+    ensure_database_schema()
     
     # Then initialize data
     initialize_admin()
@@ -278,6 +327,82 @@ def inject_user():
         if user:
             current_user = user.to_dict()
     return dict(current_user=current_user)
+
+# ==========================================
+# Anti-Abuse, AI Predictor & RBAC Helpers
+# ==========================================
+JOIN_RATE_LIMIT = {}  # ip -> [timestamps]
+
+def check_join_rate_limit(ip_address):
+    """Rate limit join requests: max 6 requests per 5 minutes per IP"""
+    import time
+    now = time.time()
+    window = 300  # 5 minutes
+    timestamps = JOIN_RATE_LIMIT.get(ip_address, [])
+    timestamps = [t for t in timestamps if now - t < window]
+    if len(timestamps) >= 6:
+        JOIN_RATE_LIMIT[ip_address] = timestamps
+        return False
+    timestamps.append(now)
+    JOIN_RATE_LIMIT[ip_address] = timestamps
+    return True
+
+def predict_wait_time(business_id, position, service_category=None):
+    """
+    Intelligent AI wait time estimation engine.
+    Factors in service category duration, number of active counters,
+    time-of-day rush multiplier, and historical throughput.
+    """
+    from models import Business, QueueStatistics
+    business = db_sql.session.get(Business, business_id)
+    stats = QueueStatistics.query.filter_by(business_id=business_id).first()
+    
+    base_duration = 10  # minutes default
+    if business:
+        cats = business.get_categories_list()
+        for c in cats:
+            if service_category and c['name'].lower() == service_category.lower():
+                base_duration = c['duration']
+                break
+    
+    num_counters = len(business.get_counters_list()) if business else 1
+    effective_counters = max(1, num_counters)
+    
+    # Historical blend
+    hist_avg = stats.avg_wait_time if (stats and stats.avg_wait_time and stats.avg_wait_time > 0) else base_duration
+    blended_unit_time = (base_duration * 0.6) + (hist_avg * 0.4)
+    
+    # Rush hour multiplier (lunch 12-14 and evening 17-19)
+    current_hour = datetime.utcnow().hour
+    rush_multiplier = 1.25 if current_hour in [12, 13, 14, 17, 18, 19] else 1.0
+    
+    if position <= 0:
+        est_minutes = 0
+    else:
+        est_minutes = max(1, round(((position * blended_unit_time) / effective_counters) * rush_multiplier))
+        
+    confidence = 95 if (stats and (stats.total_served or 0) > 10) else 82
+    
+    return {
+        "minutes": est_minutes,
+        "display": f"~{est_minutes} min",
+        "confidence": f"{confidence}%",
+        "is_rush_hour": rush_multiplier > 1.0
+    }
+
+def is_admin_or_staff(business_id=None):
+    """Check if current session or user has admin or staff privileges"""
+    if session.get('admin'):
+        return True
+    user_id = session.get('user_id')
+    if user_id:
+        from models import User
+        user = db_sql.session.get(User, user_id)
+        if user and user.role in ('super_admin', 'business_admin', 'staff'):
+            if business_id and user.role in ('business_admin', 'staff') and user.business_id:
+                return user.business_id == business_id
+            return True
+    return False
 
 # Routes
 @app.route('/')
@@ -343,6 +468,12 @@ def join_queue(business_id):
         flash("Please sign in or create an account to join the queue.", "warning")
         return redirect(url_for('user_login', next=url_for('business_queue', business_id=business_id)))
 
+    # Anti-abuse: Check IP rate limit
+    client_ip = request.remote_addr or '127.0.0.1'
+    if not check_join_rate_limit(client_ip):
+        flash("Too many requests from your device. Please wait a few minutes before taking another ticket.", "danger")
+        return redirect(url_for('business_queue', business_id=business_id))
+
     # Get business details
     from models import Business, QueueItem, QueueStatistics, User
     business = db_sql.session.get(Business, business_id)
@@ -350,16 +481,39 @@ def join_queue(business_id):
     if not business:
         flash("Business not found", "danger")
         return redirect(url_for('index'))
+
+    # Check if business queue is paused
+    if getattr(business, 'is_paused', False):
+        flash("This venue has temporarily paused new queue entries. Please check back shortly.", "warning")
+        return redirect(url_for('business_queue', business_id=business_id))
+    
+    # Check max capacity
+    stats = QueueStatistics.query.filter_by(business_id=business_id).first()
+    max_cap = getattr(business, 'max_capacity', 50) or 50
+    if stats and (stats.current_queue_length or 0) >= max_cap:
+        flash(f"This queue is currently at maximum capacity ({max_cap} customers). Please check back soon.", "warning")
+        return redirect(url_for('business_queue', business_id=business_id))
     
     user = db_sql.session.get(User, user_id)
     # Get form data
     name = request.form.get('name') or (user.full_name if user else None) or (user.username if user else 'Customer')
-    phone = request.form.get('phone') or (user.phone if user else '')
+    phone = (request.form.get('phone') or (user.phone if user else '')).strip()
     details = request.form.get('details', '')
+    service_category = request.form.get('service_category') or 'General Inquiry'
     
     if not name or not phone:
         flash("Name and phone number are required to join the queue.", "danger")
         return redirect(url_for('business_queue', business_id=business_id))
+
+    # Anti-abuse: Duplicate active ticket check for the same phone number
+    existing_ticket = QueueItem.query.filter(
+        QueueItem.business_id == business_id,
+        QueueItem.phone == phone,
+        QueueItem.status.in_(['waiting', 'called', 'delayed'])
+    ).first()
+    if existing_ticket:
+        flash("You already have an active ticket in this queue!", "info")
+        return redirect(url_for('ticket_pass', item_id=existing_ticket.id))
     
     # Create a new queue item
     item_id = str(uuid.uuid4())
@@ -373,7 +527,8 @@ def join_queue(business_id):
         name=name,
         phone=phone,
         details=details,
-        priority=3,  # Default priority for form submissions
+        service_category=service_category,
+        priority=3,
         status='waiting',
         timestamp=current_time
     )
@@ -382,13 +537,11 @@ def join_queue(business_id):
     db_sql.session.add(new_item)
     
     # Update statistics
-    stats = QueueStatistics.query.filter_by(business_id=business_id).first()
     if stats:
-        stats.current_queue_length += 1
-        if stats.current_queue_length > stats.peak_queue_length:
+        stats.current_queue_length = (stats.current_queue_length or 0) + 1
+        if stats.current_queue_length > (stats.peak_queue_length or 0):
             stats.peak_queue_length = stats.current_queue_length
     else:
-        # Create new statistics record if none exists
         stats = QueueStatistics(
             business_id=business_id,
             total_served=0,
@@ -408,6 +561,7 @@ def join_queue(business_id):
         'name': name,
         'phone': phone,
         'details': details,
+        'service_category': service_category,
         'priority': 3,
         'timestamp': current_time.isoformat(),
         'status': 'waiting'
@@ -416,22 +570,10 @@ def join_queue(business_id):
     
     db_sql.session.commit()
     
-    # Calculate estimated wait time
-    wait_time = "Unknown"
-    if stats.avg_wait_time and stats.avg_wait_time > 0:
-        if stats.avg_wait_time < 1:
-            wait_min = int(stats.avg_wait_time * 60)
-            wait_time = f"{wait_min} seconds"
-        else:
-            wait_min = int(stats.avg_wait_time)
-            wait_time = f"{wait_min} minutes"
-    elif stats.current_queue_length > 0:
-        # If no avg wait time available, estimate based on number of people
-        wait_min = stats.current_queue_length * 5  # Assume 5 minutes per person
-        wait_time = f"~{wait_min} minutes"
-    
-    # Get position in queue
+    # AI Predicted wait time
     position = stats.current_queue_length
+    prediction = predict_wait_time(business_id, position, service_category)
+    wait_time = prediction["display"]
     
     # Send SMS confirmation
     try:
@@ -442,11 +584,16 @@ def join_queue(business_id):
         logging.error(f"Error sending SMS: {str(e)}")
     
     # Redirect to confirmation page
+    ticket_url = url_for('ticket_pass', item_id=item_id, _external=True)
     return render_template('queue_confirmation.html', 
                            business=business,
+                           item=new_item,
+                           item_id=item_id,
                            position=position,
                            phone=phone,
                            wait_time=wait_time,
+                           prediction=prediction,
+                           ticket_url=ticket_url,
                            total_waiting=stats.current_queue_length)
 
 # ==========================================
@@ -753,16 +900,30 @@ def admin_panel():
         if business:
             selected_business = business.to_dict()
             
-            # Get queue items for this business
-            queue_items_sql = QueueItem.query.filter_by(
-                business_id=selected_business_id,
-                status='waiting'
+            # Get active waiting & delayed queue items for this business
+            queue_items_sql = QueueItem.query.filter(
+                QueueItem.business_id == selected_business_id,
+                QueueItem.status.in_(['waiting', 'delayed'])
             ).order_by(
                 QueueItem.priority.desc(),
                 QueueItem.timestamp.asc()
             ).all()
             
             queue_items = [item.to_dict() for item in queue_items_sql]
+            
+            # Get currently called customers (active at counter)
+            called_items_sql = QueueItem.query.filter_by(
+                business_id=selected_business_id,
+                status='called'
+            ).order_by(QueueItem.called_at.desc()).limit(5).all()
+            called_items = [item.to_dict() for item in called_items_sql]
+
+            # Get recent no-show customers (available for recall)
+            no_show_items_sql = QueueItem.query.filter_by(
+                business_id=selected_business_id,
+                status='no_show'
+            ).order_by(QueueItem.completed_at.desc()).limit(10).all()
+            no_show_items = [item.to_dict() for item in no_show_items_sql]
             
             # Fallback to Replit DB if none found in SQL
             if not queue_items:
@@ -776,15 +937,22 @@ def admin_panel():
             if stats_sql:
                 stats = stats_sql.to_dict()
             else:
-                # Fallback to Replit DB
                 queue_prefix = f"{selected_business_id}_"
                 stats = queue_manager.get_statistics(queue_prefix=queue_prefix)
+        else:
+            called_items = []
+            no_show_items = []
+    else:
+        called_items = []
+        no_show_items = []
     
     return render_template('admin_panel.html',
                          businesses=businesses_list,
                          selected_business_id=selected_business_id,
                          selected_business=selected_business,
                          queue_items=queue_items,
+                         called_items=called_items,
+                         no_show_items=no_show_items,
                          stats=stats,
                          queue_count=queue_count)
 
@@ -808,11 +976,33 @@ def manage():
 
 @app.route('/statistics')
 def statistics():
-    """Queue statistics page"""
-    from models import QueueStatistics, QueueHistory
-    sql_history = QueueHistory.query.order_by(QueueHistory.completed_at.desc()).limit(50).all()
+    """Queue statistics page with rush hour heatmap and CSAT reviews"""
+    from models import QueueStatistics, QueueHistory, QueueFeedback, Business
+    sql_history = QueueHistory.query.order_by(QueueHistory.completed_at.desc()).limit(100).all()
     all_stats = QueueStatistics.query.all()
+    feedbacks = QueueFeedback.query.order_by(QueueFeedback.created_at.desc()).limit(10).all()
+    businesses = Business.query.all()
     
+    # Calculate 24-Hour Rush-Hour Heatmap
+    hourly_counts = [0] * 24
+    for h in sql_history:
+        if h.timestamp:
+            hr = h.timestamp.hour
+            hourly_counts[hr] += 1
+    max_count = max(hourly_counts + [1])
+    rush_heatmap = [
+        {
+            "hour": f"{h:02d}:00",
+            "count": count,
+            "pct": min(100, max(8, round((count / max_count) * 100))),
+            "level": "heat-high" if count >= max_count * 0.7 and count > 0 else ("heat-med" if count >= max_count * 0.35 and count > 0 else "heat-low")
+        }
+        for h, count in enumerate(hourly_counts)
+    ]
+    
+    total_feedbacks = len(feedbacks)
+    avg_csat = round(sum(f.rating for f in feedbacks) / total_feedbacks, 1) if total_feedbacks > 0 else 5.0
+
     if all_stats or sql_history:
         history = [h.to_dict() for h in sql_history]
         total_served = sum((s.total_served or 0) for s in all_stats)
@@ -825,13 +1015,20 @@ def statistics():
             'total_served': total_served,
             'avg_wait_time': overall_avg_wait,
             'peak_queue_length': peak_queue,
-            'current_queue_length': current_queue
+            'current_queue_length': current_queue,
+            'csat_score': avg_csat,
+            'csat_count': total_feedbacks
         }
     else:
         stats = queue_manager.get_statistics()
         history = queue_manager.get_history()
         
-    return render_template('statistics.html', stats=stats, history=history)
+    return render_template('statistics.html', 
+                           stats=stats, 
+                           history=history, 
+                           rush_heatmap=rush_heatmap,
+                           feedbacks=[f.to_dict() for f in feedbacks],
+                           businesses=[b.to_dict() for b in businesses])
 
 # API Endpoints
 @app.route('/api/queue', methods=['GET'])
@@ -863,12 +1060,19 @@ def get_queue():
 @app.route('/api/queue', methods=['POST'])
 def add_to_queue():
     """Add a new item to the queue"""
+    # Rate limit check
+    client_ip = request.remote_addr or '127.0.0.1'
+    if not check_join_rate_limit(client_ip):
+        return jsonify({"error": "Rate limit exceeded. Please wait a few minutes."}), 429
+
     data = request.json
     if not data or 'name' not in data:
         return jsonify({"error": "Name is required"}), 400
     
     # Get business ID if provided 
     business_id = data.get('business_id')
+    phone = (data.get('phone') or '').strip()
+    service_category = data.get('service_category') or 'General Inquiry'
     
     # Create a unique ID
     item_id = str(uuid.uuid4())
@@ -881,13 +1085,37 @@ def add_to_queue():
         business = db_sql.session.get(Business, business_id)
         
         if business:
+            # Check pause status
+            if getattr(business, 'is_paused', False):
+                return jsonify({"error": "Queue is temporarily paused by venue"}), 403
+
+            # Check capacity
+            stats = QueueStatistics.query.filter_by(business_id=business_id).first()
+            max_cap = getattr(business, 'max_capacity', 50) or 50
+            if stats and (stats.current_queue_length or 0) >= max_cap:
+                return jsonify({"error": f"Queue at maximum capacity ({max_cap})"}), 403
+
+            # Anti-abuse: duplicate phone check
+            if phone:
+                existing = QueueItem.query.filter(
+                    QueueItem.business_id == business_id,
+                    QueueItem.phone == phone,
+                    QueueItem.status.in_(['waiting', 'called', 'delayed'])
+                ).first()
+                if existing:
+                    return jsonify({
+                        "error": "Active ticket already exists for this phone number",
+                        "ticket_id": existing.id
+                    }), 400
+
             # Create new queue item
             new_item = QueueItem(
                 id=item_id,
                 business_id=business_id,
                 name=data['name'],
-                phone=data.get('phone', ''),
+                phone=phone,
                 details=data.get('details', ''),
+                service_category=service_category,
                 priority=int(data.get('priority', 3)),
                 status='waiting',
                 timestamp=current_time
@@ -1122,7 +1350,8 @@ def complete_queue_item(item_id):
             except Exception as e:
                 logging.error(f"Error sending SMS: {str(e)}")
         
-        return jsonify({"success": True})
+        feedback_url = url_for('feedback_page', item_id=item_id, _external=True)
+        return jsonify({"success": True, "feedback_url": feedback_url})
     else:
         # Fallback to Replit DB
         success = queue_manager.complete_item(item_id)
@@ -1130,6 +1359,327 @@ def complete_queue_item(item_id):
             return jsonify({"success": True})
         else:
             return jsonify({"error": "Item not found"}), 404
+
+# ==========================================
+# Advanced Operational & Voice Calling APIs
+# ==========================================
+
+@app.route('/api/queue/<item_id>/call', methods=['POST'])
+def call_queue_item(item_id):
+    """Staff calls next customer to a specific counter with TTS audio synthesis"""
+    if not is_admin_or_staff():
+        return jsonify({"error": "Admin/Staff authorization required"}), 403
+    
+    data = request.json or {}
+    counter = data.get('counter', 'Counter 1')
+    
+    from models import QueueItem, Business
+    item = db_sql.session.get(QueueItem, item_id)
+    if not item:
+        return jsonify({"error": "Queue item not found"}), 404
+    
+    item.status = 'called'
+    item.assigned_counter = counter
+    item.called_at = datetime.utcnow()
+    db_sql.session.commit()
+    
+    # Notify customer via SMS if available
+    if item.phone:
+        try:
+            from notifications import send_turn_notification
+            biz = db_sql.session.get(Business, item.business_id)
+            biz_name = biz.name if biz else "our venue"
+            send_turn_notification(item.name, f"{biz_name} ({counter})", item.phone)
+        except Exception as ex:
+            logging.error(f"Failed to send turn SMS: {ex}")
+    
+    speech_text = f"Now serving {item.name}. Please proceed to {counter}."
+    return jsonify({
+        "success": True,
+        "item": item.to_dict(),
+        "counter": counter,
+        "speech_text": speech_text
+    })
+
+@app.route('/api/queue/<item_id>/defer', methods=['POST'])
+def defer_queue_item(item_id):
+    """Customer 'I'm Running Late' action - Delays turn by 10 minutes (max 2 delays)"""
+    from datetime import timedelta
+    from models import QueueItem
+    
+    item = db_sql.session.get(QueueItem, item_id)
+    if not item:
+        return jsonify({"error": "Queue item not found"}), 404
+    
+    if item.status not in ('waiting', 'delayed'):
+        return jsonify({"error": f"Cannot delay a ticket with status '{item.status}'"}), 400
+    
+    if (item.delay_count or 0) >= 2:
+        return jsonify({"error": "Maximum delay limit (2 times) reached for this ticket."}), 400
+    
+    item.delay_count = (item.delay_count or 0) + 1
+    item.status = 'delayed'
+    # Shift timestamp forward by 10 minutes to move down in order
+    item.timestamp = (item.timestamp or datetime.utcnow()) + timedelta(minutes=10)
+    item.delay_until = datetime.utcnow() + timedelta(minutes=10)
+    db_sql.session.commit()
+    
+    # Calculate new position
+    earlier_count = QueueItem.query.filter(
+        QueueItem.business_id == item.business_id,
+        QueueItem.status.in_(['waiting', 'delayed']),
+        QueueItem.timestamp < item.timestamp
+    ).count()
+    new_pos = earlier_count + 1
+    
+    return jsonify({
+        "success": True,
+        "message": f"Your turn has been delayed by 10 minutes. Your new position is #{new_pos}.",
+        "new_position": new_pos,
+        "delay_count": item.delay_count
+    })
+
+@app.route('/api/queue/<item_id>/no-show', methods=['POST'])
+def no_show_queue_item(item_id):
+    """Mark customer as No-Show with ability to recall later"""
+    if not is_admin_or_staff():
+        return jsonify({"error": "Admin/Staff authorization required"}), 403
+    
+    from models import QueueItem, QueueStatistics, Business
+    item = db_sql.session.get(QueueItem, item_id)
+    if not item:
+        return jsonify({"error": "Queue item not found"}), 404
+    
+    item.status = 'no_show'
+    item.completed_at = datetime.utcnow()
+    
+    stats = QueueStatistics.query.filter_by(business_id=item.business_id).first()
+    if stats:
+        stats.current_queue_length = max(0, (stats.current_queue_length or 0) - 1)
+        biz = db_sql.session.get(Business, item.business_id)
+        if biz:
+            biz.queue_size = stats.current_queue_length
+    
+    db_sql.session.commit()
+    return jsonify({"success": True})
+
+@app.route('/api/queue/<item_id>/recall', methods=['POST'])
+def recall_queue_item(item_id):
+    """Recall a no-show customer back into the active queue"""
+    if not is_admin_or_staff():
+        return jsonify({"error": "Admin/Staff authorization required"}), 403
+    
+    from models import QueueItem, QueueStatistics, Business
+    item = db_sql.session.get(QueueItem, item_id)
+    if not item:
+        return jsonify({"error": "Queue item not found"}), 404
+    
+    item.status = 'waiting'
+    item.timestamp = datetime.utcnow()
+    
+    stats = QueueStatistics.query.filter_by(business_id=item.business_id).first()
+    if stats:
+        stats.current_queue_length = (stats.current_queue_length or 0) + 1
+        biz = db_sql.session.get(Business, item.business_id)
+        if biz:
+            biz.queue_size = stats.current_queue_length
+    
+    db_sql.session.commit()
+    return jsonify({"success": True})
+
+@app.route('/api/queue/<item_id>/status')
+def get_ticket_status(item_id):
+    """Lightweight polling endpoint for live pass & position updates"""
+    from models import QueueItem
+    item = db_sql.session.get(QueueItem, item_id)
+    if not item:
+        return jsonify({"error": "Ticket not found"}), 404
+    
+    earlier_count = QueueItem.query.filter(
+        QueueItem.business_id == item.business_id,
+        QueueItem.status.in_(['waiting', 'delayed', 'called']),
+        QueueItem.timestamp < item.timestamp
+    ).count()
+    position = earlier_count + 1 if item.status in ('waiting', 'delayed') else (1 if item.status == 'called' else 0)
+    prediction = predict_wait_time(item.business_id, position, item.service_category)
+    
+    return jsonify({
+        "id": item.id,
+        "status": item.status,
+        "position": position,
+        "assigned_counter": item.assigned_counter,
+        "delay_count": item.delay_count or 0,
+        "estimated_wait": prediction["display"],
+        "called_at": item.called_at.isoformat() if item.called_at else None
+    })
+
+@app.route('/api/business/<business_id>/settings', methods=['POST'])
+def update_business_settings(business_id):
+    """Update business settings (counters, categories, max capacity, pause)"""
+    if not is_admin_or_staff(business_id):
+        return jsonify({"error": "Admin authorization required"}), 403
+    
+    data = request.json or {}
+    from models import Business
+    biz = db_sql.session.get(Business, business_id)
+    if not biz:
+        return jsonify({"error": "Business not found"}), 404
+    
+    if 'counters' in data:
+        biz.counters = data['counters']
+    if 'categories' in data:
+        biz.categories = data['categories']
+    if 'max_capacity' in data:
+        try:
+            biz.max_capacity = int(data['max_capacity'])
+        except (ValueError, TypeError):
+            pass
+    if 'is_paused' in data:
+        biz.is_paused = bool(data['is_paused'])
+    
+    db_sql.session.commit()
+    return jsonify({"success": True, "business": biz.to_dict()})
+
+# ==========================================
+# Entrance Poster, Digital Pass & CSAT Routes
+# ==========================================
+
+@app.route('/business/<business_id>/poster')
+def business_poster(business_id):
+    """Printable QR Code Entrance Door Poster for physical venues"""
+    from models import Business, QueueStatistics
+    business = db_sql.session.get(Business, business_id)
+    if not business:
+        flash("Business not found", "danger")
+        return redirect(url_for('index'))
+    
+    stats = QueueStatistics.query.filter_by(business_id=business_id).first()
+    target_url = url_for('business_queue', business_id=business.id, _external=True)
+    return render_template('poster.html', business=business, stats=stats, target_url=target_url)
+
+@app.route('/ticket/<item_id>')
+def ticket_pass(item_id):
+    """Digital Wallet Boarding Pass view with live sync and late deferrals"""
+    from models import QueueItem, Business
+    item = db_sql.session.get(QueueItem, item_id)
+    if not item:
+        flash("Ticket not found or expired", "danger")
+        return redirect(url_for('index'))
+    
+    business = db_sql.session.get(Business, item.business_id)
+    earlier_count = QueueItem.query.filter(
+        QueueItem.business_id == item.business_id,
+        QueueItem.status.in_(['waiting', 'delayed', 'called']),
+        QueueItem.timestamp < item.timestamp
+    ).count()
+    position = earlier_count + 1 if item.status in ('waiting', 'delayed') else (1 if item.status == 'called' else 0)
+    prediction = predict_wait_time(item.business_id, position, item.service_category)
+    ticket_url = url_for('ticket_pass', item_id=item.id, _external=True)
+    
+    return render_template('ticket_pass.html',
+                           item=item,
+                           business=business,
+                           position=position,
+                           prediction=prediction,
+                           ticket_url=ticket_url)
+
+@app.route('/feedback/<item_id>')
+def feedback_page(item_id):
+    """Customer CSAT Feedback rating page"""
+    from models import QueueItem, Business, QueueFeedback
+    existing = QueueFeedback.query.filter_by(queue_item_id=item_id).first()
+    item = db_sql.session.get(QueueItem, item_id)
+    business = db_sql.session.get(Business, item.business_id) if item else None
+    return render_template('feedback.html', 
+                           item=item, 
+                           business=business, 
+                           existing=existing,
+                           item_id=item_id)
+
+@app.route('/api/feedback', methods=['POST'])
+def submit_feedback():
+    """Submit customer CSAT 1-5 star review with sentiment tags"""
+    data = request.json or {}
+    queue_item_id = data.get('queue_item_id')
+    business_id = data.get('business_id')
+    rating = int(data.get('rating', 5))
+    tags = data.get('tags', '')
+    comment = data.get('comment', '')
+    customer_name = data.get('customer_name', 'Valued Customer')
+    
+    if not business_id:
+        return jsonify({"error": "Business ID is required"}), 400
+    
+    from models import QueueFeedback, QueueStatistics
+    feedback = QueueFeedback(
+        id=str(uuid.uuid4()),
+        queue_item_id=queue_item_id,
+        business_id=business_id,
+        customer_name=customer_name,
+        rating=rating,
+        tags=tags,
+        comment=comment
+    )
+    db_sql.session.add(feedback)
+    
+    # Recalculate CSAT score in statistics
+    stats = QueueStatistics.query.filter_by(business_id=business_id).first()
+    if stats:
+        prev_count = stats.csat_count or 0
+        prev_score = stats.csat_score or 5.0
+        new_count = prev_count + 1
+        new_score = ((prev_score * prev_count) + rating) / new_count
+        stats.csat_score = round(new_score, 2)
+        stats.csat_count = new_count
+    
+    db_sql.session.commit()
+    return jsonify({"success": True, "message": "Thank you for your rating!"})
+
+@app.route('/api/reports/export')
+@app.route('/admin/export/csv')
+def export_csv_report():
+    """Stream downloadable CSV report of queue history and throughput metrics"""
+    if not is_admin_or_staff():
+        flash("Admin login required to export reports", "danger")
+        return redirect(url_for('admin_login'))
+    
+    import csv
+    import io
+    from flask import make_response
+    from models import QueueHistory
+    
+    business_id = request.args.get('business_id')
+    query = QueueHistory.query
+    if business_id:
+        query = query.filter_by(business_id=business_id)
+    records = query.order_by(QueueHistory.completed_at.desc()).all()
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        'Ticket ID', 'Business ID', 'Customer Name', 'Service Category',
+        'Assigned Counter', 'Wait Time (Minutes)', 'Check-in Time',
+        'Completed Time', 'Status'
+    ])
+    
+    for r in records:
+        writer.writerow([
+            r.item_id or '',
+            r.business_id,
+            r.name or 'Customer',
+            r.service_category or 'General',
+            r.counter or 'Counter 1',
+            round(r.wait_time or 0, 1),
+            r.timestamp.isoformat() if r.timestamp else '',
+            r.completed_at.isoformat() if r.completed_at else '',
+            'Reset Marker' if r.is_reset_marker else 'Completed'
+        ])
+    
+    response = make_response(output.getvalue())
+    filename = f"queue_report_{business_id or 'all'}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+    response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+    response.headers['Content-Type'] = 'text/csv'
+    return response
 
 @app.route('/api/queue/statistics', methods=['GET'])
 def get_statistics():
@@ -1358,6 +1908,7 @@ def check_position():
                              position=position,
                              wait_time=wait_time,
                              business=business.to_dict(),
+                             item=queue_item.to_dict(),
                              businesses=businesses_list,
                              business_id=business_id)
     

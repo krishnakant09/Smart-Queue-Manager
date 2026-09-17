@@ -1,0 +1,182 @@
+{% extends 'base.html' %}
+
+{% block title %}Rate Your Experience - Smart Queue Manager{% endblock %}
+
+{% block content %}
+<div style="max-width: 580px; margin: 1.5rem auto 3.5rem;">
+  
+  <div class="glass-panel" style="padding: 2.5rem; text-align: center; border-radius: 24px;">
+    
+    <div id="feedbackFormContainer">
+      <div style="display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: 50%; background: rgba(245, 158, 11, 0.15); color: #fbbf24; font-size: 2rem; margin-bottom: 1.25rem; border: 1px solid rgba(245, 158, 11, 0.3); box-shadow: 0 0 25px rgba(245, 158, 11, 0.25);">
+        <i class="fas fa-star"></i>
+      </div>
+
+      <h1 style="font-size: 2rem; margin-bottom: 0.35rem;">How Was Your Service?</h1>
+      <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 2rem;">
+        Your feedback helps <strong style="color: #fff;">{{ business.name if business else 'the team' }}</strong> continuously improve customer satisfaction.
+      </p>
+
+      {% if existing %}
+        <div class="alert alert-success" style="justify-content: center; margin-bottom: 1.5rem;">
+          <i class="fas fa-check-circle"></i> You have already rated this visit {{ existing.rating }} / 5 stars. Thank you!
+        </div>
+        <a href="{{ url_for('index') }}" class="btn btn-primary" style="margin-top: 1rem;">
+          <i class="fas fa-store"></i> Return to Businesses
+        </a>
+      {% else %}
+        <form id="csatForm" onsubmit="submitCSATFeedback(event)">
+          <input type="hidden" id="feedbackItemId" value="{{ item_id }}">
+          <input type="hidden" id="feedbackBusinessId" value="{{ business.id if business else '' }}">
+          <input type="hidden" id="feedbackCustomerName" value="{{ item.name if item else 'Customer' }}">
+
+          <!-- Interactive 5-Star Rating -->
+          <div class="star-rating-container" style="margin-bottom: 1.75rem;">
+            <div class="stars-row" id="starsRow">
+              <i class="fas fa-star star-btn active" data-val="1"></i>
+              <i class="fas fa-star star-btn active" data-val="2"></i>
+              <i class="fas fa-star star-btn active" data-val="3"></i>
+              <i class="fas fa-star star-btn active" data-val="4"></i>
+              <i class="fas fa-star star-btn active" data-val="5"></i>
+            </div>
+            <input type="hidden" id="selectedRating" value="5">
+            <div id="ratingText" style="font-weight: 700; color: #fbbf24; font-size: 1.1rem; margin-top: 0.5rem;">
+              5 - Outstanding!
+            </div>
+          </div>
+
+          <!-- Sentiment Feedback Chips -->
+          <div style="text-align: left; margin-bottom: 1.5rem;">
+            <label class="form-label" style="font-size: 0.85rem; margin-bottom: 0.6rem;">
+              <i class="fas fa-tags" style="color: var(--secondary); margin-right: 0.35rem;"></i> What stood out? (Select tags)
+            </label>
+            <div class="feedback-chips-container" id="feedbackChips">
+              <button type="button" class="chip-btn active" data-tag="Fast Service">⚡ Fast Service</button>
+              <button type="button" class="chip-btn active" data-tag="Friendly Staff">😊 Friendly Staff</button>
+              <button type="button" class="chip-btn" data-tag="Accurate Wait Time">⏱️ Accurate Wait Time</button>
+              <button type="button" class="chip-btn" data-tag="Clean Venue">🧼 Clean Venue</button>
+              <button type="button" class="chip-btn" data-tag="Professional Care">💼 Professional Care</button>
+              <button type="button" class="chip-btn" data-tag="Smooth Check-in">📱 Smooth Check-in</button>
+            </div>
+          </div>
+
+          <!-- Written Comment Box -->
+          <div class="form-group" style="text-align: left; margin-bottom: 1.75rem;">
+            <label class="form-label" for="feedbackComment">
+              <i class="fas fa-comment-dots" style="color: var(--primary); margin-right: 0.35rem;"></i> Additional Comments (Optional)
+            </label>
+            <textarea id="feedbackComment" class="form-control" rows="3" placeholder="Tell us about your experience..."></textarea>
+          </div>
+
+          <button type="submit" id="submitFeedbackBtn" class="btn btn-primary btn-lg" style="width: 100%;">
+            <i class="fas fa-paper-plane"></i> Submit Review & Rating
+          </button>
+        </form>
+      {% endif %}
+    </div>
+
+    <!-- Thank You Confirmation Screen (Revealed via JS) -->
+    <div id="feedbackThankYou" style="display: none; padding: 1.5rem 0;">
+      <div style="display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: 50%; background: rgba(16, 185, 129, 0.15); color: var(--success); font-size: 2rem; margin-bottom: 1rem; border: 1px solid rgba(16, 185, 129, 0.3); box-shadow: 0 0 25px var(--success-glow);">
+        <i class="fas fa-check"></i>
+      </div>
+      <h2 style="font-size: 1.8rem; margin-bottom: 0.5rem;">Thank You!</h2>
+      <p style="color: var(--text-muted); font-size: 1rem; margin-bottom: 1.5rem;">
+        Your review has been recorded and will help improve future customer experiences.
+      </p>
+      <a href="{{ url_for('index') }}" class="btn btn-secondary">
+        <i class="fas fa-store"></i> Browse Other Venues
+      </a>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const stars = document.querySelectorAll('.star-btn');
+  const ratingInput = document.getElementById('selectedRating');
+  const ratingText = document.getElementById('ratingText');
+
+  const descriptions = {
+    1: '1 - Poor Experience',
+    2: '2 - Needs Improvement',
+    3: '3 - Average Service',
+    4: '4 - Very Good!',
+    5: '5 - Outstanding!'
+  };
+
+  stars.forEach(star => {
+    star.addEventListener('click', () => {
+      const val = parseInt(star.getAttribute('data-val'));
+      ratingInput.value = val;
+      ratingText.textContent = descriptions[val] || `${val} Stars`;
+
+      stars.forEach(s => {
+        const sVal = parseInt(s.getAttribute('data-val'));
+        if (sVal <= val) {
+          s.classList.add('active');
+        } else {
+          s.classList.remove('active');
+        }
+      });
+    });
+  });
+
+  // Toggle feedback sentiment chips
+  const chips = document.querySelectorAll('.chip-btn');
+  chips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      chip.classList.toggle('active');
+    });
+  });
+});
+
+async function submitCSATFeedback(e) {
+  e.preventDefault();
+  const submitBtn = document.getElementById('submitFeedbackBtn');
+  const itemId = document.getElementById('feedbackItemId').value;
+  const businessId = document.getElementById('feedbackBusinessId').value;
+  const customerName = document.getElementById('feedbackCustomerName').value;
+  const rating = parseInt(document.getElementById('selectedRating').value);
+  const comment = document.getElementById('feedbackComment').value;
+
+  const activeChips = Array.from(document.querySelectorAll('.chip-btn.active')).map(c => c.getAttribute('data-tag'));
+  const tags = activeChips.join(', ');
+
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+
+  try {
+    const res = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        queue_item_id: itemId,
+        business_id: businessId,
+        customer_name: customerName,
+        rating: rating,
+        tags: tags,
+        comment: comment
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      document.getElementById('feedbackFormContainer').style.display = 'none';
+      document.getElementById('feedbackThankYou').style.display = 'block';
+    } else {
+      alert(data.error || 'Failed to submit feedback');
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Review & Rating';
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Error submitting feedback');
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Review & Rating';
+  }
+}
+</script>
+{% endblock %}

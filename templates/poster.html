@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ business.name }} - Scan to Join Virtual Line</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Outfit:wght@600;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: #111827;
+      --primary: #6366f1;
+      --primary-gradient: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+      --secondary: #06b6d4;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --border: #334155;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+    .poster-controls {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.5rem;
+      border-radius: 9999px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      border: none;
+    }
+    .btn-primary {
+      background: var(--primary-gradient);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
+    }
+    .btn-secondary {
+      background: #1e293b;
+      color: #cbd5e1;
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+      background: #334155;
+      color: #fff;
+    }
+    
+    /* Poster Container */
+    .poster-frame {
+      width: 100%;
+      max-width: 650px;
+      background: var(--card-bg);
+      border: 2px solid var(--border);
+      border-radius: 28px;
+      padding: 3rem 2.5rem;
+      text-align: center;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 40px rgba(99, 102, 241, 0.15);
+      position: relative;
+      overflow: hidden;
+    }
+    .poster-frame::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 8px;
+      background: linear-gradient(90deg, #6366f1, #06b6d4, #10b981, #f59e0b);
+    }
+    .badge-live {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 1rem;
+      border-radius: 9999px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 1.5rem;
+    }
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 10px #10b981;
+      animation: pulse 1.8s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.3); opacity: 0.5; }
+    }
+    .venue-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 2.75rem;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.5rem;
+      color: #fff;
+    }
+    .venue-location {
+      font-size: 1.1rem;
+      color: var(--text-muted);
+      margin-bottom: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+    }
+    
+    /* QR Box */
+    .qr-card {
+      background: #ffffff;
+      padding: 1.75rem;
+      border-radius: 24px;
+      display: inline-block;
+      margin-bottom: 2rem;
+      box-shadow: 0 20px 30px rgba(0, 0, 0, 0.4);
+      position: relative;
+    }
+    #qrcodeCanvas {
+      display: block;
+      width: 250px;
+      height: 250px;
+    }
+    .qr-caption {
+      margin-top: 1rem;
+      font-weight: 800;
+      color: #0f172a;
+      font-size: 1rem;
+      letter-spacing: -0.01em;
+    }
+    
+    /* Instructions */
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-top: 1.5rem;
+      text-align: left;
+      border-top: 1px solid var(--border);
+      padding-top: 2rem;
+    }
+    .step-item {
+      background: rgba(255, 255, 255, 0.03);
+      padding: 1rem;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .step-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      background: var(--primary);
+      color: #fff;
+      border-radius: 50%;
+      font-size: 0.8rem;
+      font-weight: 800;
+      margin-bottom: 0.5rem;
+    }
+    .step-text {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+    .step-text strong {
+      color: #fff;
+      display: block;
+      margin-bottom: 0.2rem;
+    }
+    
+    .poster-footer {
+      margin-top: 2rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+    
+    /* Print Styles */
+    @media print {
+      body {
+        background: #fff !important;
+        color: #000 !important;
+        padding: 0 !important;
+      }
+      .poster-controls {
+        display: none !important;
+      }
+      .poster-frame {
+        max-width: 100% !important;
+        border: none !important;
+        box-shadow: none !important;
+        background: #fff !important;
+        color: #000 !important;
+        padding: 2rem 1rem !important;
+      }
+      .venue-title {
+        color: #000 !important;
+        font-size: 3rem !important;
+      }
+      .venue-location, .step-text {
+        color: #333 !important;
+      }
+      .step-text strong {
+        color: #000 !important;
+      }
+      .step-item {
+        border: 1px solid #ccc !important;
+        background: #f8fafc !important;
+      }
+      .qr-card {
+        border: 2px solid #000 !important;
+        box-shadow: none !important;
+      }
+      .badge-live {
+        border: 1px solid #000 !important;
+        color: #000 !important;
+        background: #f1f5f9 !important;
+      }
+      .live-dot {
+        background: #000 !important;
+        box-shadow: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Controls (hidden on print) -->
+  <div class="poster-controls">
+    <button onclick="window.print()" class="btn btn-primary">
+      <i class="fas fa-print"></i> Print Entrance Poster
+    </button>
+    <a href="{{ url_for('business_queue', business_id=business.id) }}" class="btn btn-secondary">
+      <i class="fas fa-arrow-left"></i> View Live Queue
+    </a>
+  </div>
+
+  <!-- Printable Poster Frame -->
+  <div class="poster-frame">
+    <div class="badge-live">
+      <span class="live-dot"></span> Virtual Waitlist Open
+    </div>
+
+    <h1 class="venue-title">{{ business.name }}</h1>
+    <div class="venue-location">
+      <i class="fas fa-map-marker-alt" style="color: var(--secondary);"></i>
+      <span>{{ business.location or 'Main Location' }}</span>
+      {% if stats and stats.current_queue_length %}
+        <span style="margin-left: 0.75rem; color: #fbbf24; font-weight: 600;">
+          • {{ stats.current_queue_length }} in line right now
+        </span>
+      {% endif %}
+    </div>
+
+    <!-- QR Code Display Box -->
+    <div class="qr-card">
+      <div id="qrcodeCanvas"></div>
+      <div class="qr-caption">
+        <i class="fas fa-qrcode" style="margin-right: 0.35rem; color: var(--primary);"></i> SCAN WITH CAMERA
+      </div>
+    </div>
+
+    <h2 style="font-family: 'Outfit'; font-size: 1.6rem; margin-bottom: 0.35rem;">
+      Skip the Physical Line!
+    </h2>
+    <p style="color: var(--text-muted); font-size: 0.95rem; max-width: 480px; margin: 0 auto;">
+      Point your smartphone camera at the QR code to take a digital ticket and receive live turn notifications.
+    </p>
+
+    <!-- 3 Simple Steps -->
+    <div class="steps-grid">
+      <div class="step-item">
+        <span class="step-num">1</span>
+        <div class="step-text">
+          <strong>Scan Code</strong>
+          Open camera app and tap the link to join.
+        </div>
+      </div>
+      <div class="step-item">
+        <span class="step-num">2</span>
+        <div class="step-text">
+          <strong>Take Ticket</strong>
+          View your exact spot and live estimated wait.
+        </div>
+      </div>
+      <div class="step-item">
+        <span class="step-num">3</span>
+        <div class="step-text">
+          <strong>Get Notified</strong>
+          Relax nearby until we text or call your number!
+        </div>
+      </div>
+    </div>
+
+    <div class="poster-footer">
+      Powered by <strong>SmartQueue</strong> • Contactless Queue Management System
+    </div>
+  </div>
+
+  <!-- Pure SVG QR Code Generator (Zero external dependencies) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const targetUrl = "{{ target_url }}";
+      const qrContainer = document.getElementById('qrcodeCanvas');
+      if (window.QRCode) {
+        new QRCode(qrContainer, {
+          text: targetUrl,
+          width: 250,
+          height: 250,
+          colorDark: "#0f172a",
+          colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.H
+        });
+      } else {
+        qrContainer.innerHTML = `<p style="color:#000; padding:2rem;">${targetUrl}</p>`;
+      }
+    });
+  </script>
+</body>
+</html>

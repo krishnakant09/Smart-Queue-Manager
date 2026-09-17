@@ -11,10 +11,18 @@
     <h1 style="font-size: 2.2rem;">Admin Control Center</h1>
   </div>
 
-  <div style="display: flex; gap: 0.75rem; align-items: center;">
-    <button onclick="playQueueChime()" class="btn btn-secondary btn-sm" title="Test Alert Chime">
-      <i class="fas fa-volume-up"></i> Test Chime
+  <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+    <button onclick="speakQueueCall('Attention please. Smart queue voice alert system is active and ready.')" class="btn btn-secondary btn-sm" title="Test Audio & TTS Voice">
+      <i class="fas fa-volume-up"></i> Test Voice
     </button>
+    {% if selected_business %}
+      <a href="{{ url_for('export_csv_report', business_id=selected_business.id) }}" class="btn btn-secondary btn-sm" title="Download Queue CSV Report">
+        <i class="fas fa-file-csv"></i> Export CSV
+      </a>
+      <a href="{{ url_for('business_poster', business_id=selected_business.id) }}" target="_blank" class="btn btn-secondary btn-sm" title="Print QR Entrance Poster">
+        <i class="fas fa-qrcode"></i> Entrance Poster
+      </a>
+    {% endif %}
     <a href="{{ url_for('admin_logout') }}" class="btn btn-danger btn-sm">
       <i class="fas fa-sign-out-alt"></i> Logout
     </a>
@@ -40,8 +48,8 @@
         <i class="fas fa-users"></i>
       </div>
       <div class="stat-info">
-        <div class="stat-number">{{ queue_count }}</div>
-        <div class="stat-title">Active In Queue</div>
+        <div class="stat-number" id="adminQueueCount">{{ queue_count }}</div>
+        <div class="stat-title">Active Waiting</div>
       </div>
     </div>
 
@@ -78,9 +86,20 @@
 
   <!-- Operational Action Toolbar -->
   <div class="glass-panel admin-toolbar-responsive" style="padding: 1.25rem 1.5rem; margin-bottom: 2rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
-    <div style="display: flex; align-items: center; gap: 0.75rem;">
+    <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+      <!-- Counter Selector Dropdown -->
+      <div style="display: flex; align-items: center; gap: 0.5rem; background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-light); padding: 0.35rem 0.75rem; border-radius: 12px;">
+        <i class="fas fa-desktop" style="color: var(--secondary); font-size: 0.9rem;"></i>
+        <label for="activeCounterSelect" style="font-size: 0.8rem; font-weight: 700; color: var(--text-dim);">DESK:</label>
+        <select id="activeCounterSelect" class="form-control form-select" style="width: auto; padding: 0.25rem 2rem 0.25rem 0.5rem; font-size: 0.85rem; height: auto; border: none; background-color: transparent;">
+          {% for cnt in selected_business.counters %}
+            <option value="{{ cnt }}">{{ cnt }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
       {% if queue_items %}
-        <button onclick="completeQueueItem('{{ queue_items[0].id }}', '{{ selected_business.id }}')" class="btn btn-success btn-lg">
+        <button onclick="callQueueItem('{{ queue_items[0].id }}', '{{ selected_business.id }}')" class="btn btn-success btn-lg">
           <i class="fas fa-bullhorn"></i> Call Next (#1 {{ queue_items[0].name }})
         </button>
       {% else %}
@@ -94,9 +113,12 @@
       </button>
     </div>
 
-    <div style="display: flex; align-items: center; gap: 0.75rem;">
+    <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+      <button onclick="openModal('businessSettingsModal')" class="btn btn-secondary" title="Venue Configuration">
+        <i class="fas fa-cog"></i> Venue Settings
+      </button>
       <a href="{{ url_for('business_queue', business_id=selected_business.id) }}" target="_blank" class="btn btn-secondary">
-        <i class="fas fa-external-link-alt"></i> Public Display
+        <i class="fas fa-external-link-alt"></i> Public Board
       </a>
       <button onclick="resetBusinessQueue('{{ selected_business.id }}')" class="btn btn-danger btn-sm" title="Clear all waiting entries">
         <i class="fas fa-redo"></i> Reset Queue
@@ -104,13 +126,58 @@
     </div>
   </div>
 
+  <!-- Called Customers (Currently at Desk) -->
+  {% if called_items %}
+    <div class="glass-panel" style="padding: 1.5rem; margin-bottom: 2rem; border-color: rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.05);">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+        <h3 style="font-size: 1.15rem; color: #34d399; display: flex; align-items: center; gap: 0.5rem;">
+          <i class="fas fa-bullhorn"></i> Currently Being Served (Active Callout)
+        </h3>
+        <span class="live-indicator"><span class="live-dot"></span> In Service</span>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
+        {% for c in called_items %}
+          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 14px; padding: 1rem; display: flex; align-items: center; justify-content: space-between;">
+            <div>
+              <div style="font-weight: 800; font-size: 1.05rem; color: #fff;">{{ c.name }}</div>
+              <span class="counter-badge counter-badge-called" style="margin-top: 0.25rem;">
+                <i class="fas fa-desktop"></i> {{ c.assigned_counter or 'Counter 1' }}
+              </span>
+              <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 0.25rem;">
+                Service: {{ c.service_category or 'General' }}
+              </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+              <button onclick="completeQueueItem('{{ c.id }}', '{{ selected_business.id }}')" class="btn btn-success btn-sm">
+                <i class="fas fa-check"></i> Done
+              </button>
+              <button onclick="markNoShow('{{ c.id }}', '{{ selected_business.id }}')" class="btn btn-secondary btn-sm" title="Did not arrive">
+                <i class="fas fa-user-slash"></i> No Show
+              </button>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
   <!-- Live Queue Management Table -->
   <div class="glass-panel" style="padding: 1.75rem;">
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem;">
-      <h2 style="font-size: 1.35rem;">
-        Queue for <span style="color: var(--secondary);">{{ selected_business.name }}</span>
-      </h2>
-      <span style="font-size: 0.85rem; color: var(--text-dim);">Auto-refreshes on actions</span>
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.5rem;">
+      <div>
+        <h2 style="font-size: 1.35rem;">
+          Waiting Line for <span style="color: var(--secondary);">{{ selected_business.name }}</span>
+        </h2>
+        <span style="font-size: 0.85rem; color: var(--text-dim);">
+          <span class="live-dot" style="display: inline-block; margin-right: 0.25rem;"></span> Auto-sync active
+        </span>
+      </div>
+      <div style="display: flex; gap: 0.5rem;">
+        <span class="counter-badge">
+          <i class="fas fa-users"></i> {{ queue_count }} Waiting
+        </span>
+      </div>
     </div>
 
     {% if queue_items %}
@@ -120,10 +187,10 @@
             <tr>
               <th style="width: 70px;">Rank</th>
               <th>Customer</th>
+              <th>Category</th>
               <th>Contact</th>
-              <th>Priority</th>
-              <th>Details</th>
-              <th>Joined At</th>
+              <th>Status</th>
+              <th>Wait Time</th>
               <th style="text-align: right;">Operations</th>
             </tr>
           </thead>
@@ -144,6 +211,15 @@
                       Up Next
                     </span>
                   {% endif %}
+                  {% if item.details %}
+                    <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 0.15rem;">{{ item.details }}</div>
+                  {% endif %}
+                </td>
+                <td>
+                  <span style="font-size: 0.85rem; color: var(--text-muted);">
+                    <i class="fas fa-tag" style="color: var(--secondary); font-size: 0.75rem;"></i>
+                    {{ item.service_category or 'General' }}
+                  </span>
                 </td>
                 <td>
                   <span style="color: var(--text-muted); font-size: 0.9rem;">
@@ -151,18 +227,13 @@
                   </span>
                 </td>
                 <td>
-                  {% if (item.priority|default(3)|int) >= 4 %}
-                    <span class="priority-badge priority-high">High Priority</span>
-                  {% elif (item.priority|default(3)|int) == 3 %}
-                    <span class="priority-badge priority-normal">Normal</span>
+                  {% if item.status == 'delayed' %}
+                    <span class="status-badge status-warning" style="font-size: 0.75rem;">
+                      <i class="fas fa-clock"></i> Delayed (+10m)
+                    </span>
                   {% else %}
-                    <span class="priority-badge priority-low">Low</span>
+                    <span class="status-badge status-info" style="font-size: 0.75rem;">Waiting</span>
                   {% endif %}
-                </td>
-                <td>
-                  <span style="color: var(--text-muted); font-size: 0.85rem;">
-                    {{ item.details or '-' }}
-                  </span>
                 </td>
                 <td>
                   <span style="color: var(--text-dim); font-size: 0.85rem;">
@@ -170,11 +241,17 @@
                   </span>
                 </td>
                 <td style="text-align: right;">
-                  <div style="display: inline-flex; gap: 0.5rem;">
-                    <button onclick="completeQueueItem('{{ item.id }}', '{{ selected_business.id }}')" class="btn btn-success btn-sm" title="Call & Mark Completed">
-                      <i class="fas fa-check"></i> Complete
+                  <div style="display: inline-flex; gap: 0.4rem;">
+                    <button onclick="callQueueItem('{{ item.id }}', '{{ selected_business.id }}')" class="btn btn-primary btn-sm" title="Voice Callout to Desk">
+                      <i class="fas fa-bullhorn"></i> Call
                     </button>
-                    <button onclick="removeQueueItem('{{ item.id }}')" class="btn btn-danger btn-sm btn-icon" title="Remove / No Show">
+                    <button onclick="completeQueueItem('{{ item.id }}', '{{ selected_business.id }}')" class="btn btn-success btn-sm" title="Mark Completed">
+                      <i class="fas fa-check"></i> Done
+                    </button>
+                    <button onclick="markNoShow('{{ item.id }}', '{{ selected_business.id }}')" class="btn btn-secondary btn-sm" title="Mark as No-Show">
+                      <i class="fas fa-user-slash"></i>
+                    </button>
+                    <button onclick="removeQueueItem('{{ item.id }}')" class="btn btn-danger btn-sm btn-icon" title="Remove Ticket">
                       <i class="fas fa-trash-alt"></i>
                     </button>
                   </div>
@@ -189,11 +266,33 @@
         <i class="fas fa-check-circle" style="font-size: 3.5rem; color: var(--success); margin-bottom: 1rem; opacity: 0.7;"></i>
         <h3>Queue is currently empty!</h3>
         <p style="color: var(--text-muted); margin-top: 0.5rem;">
-          No customers are waiting for {{ selected_business.name }}. You can manually add walk-in customers using the button above.
+          No customers are waiting for {{ selected_business.name }}. You can add walk-in customers or print the QR entrance poster for physical guests.
         </p>
       </div>
     {% endif %}
   </div>
+
+  <!-- No-Show & Recalls Drawer -->
+  {% if no_show_items %}
+    <div class="glass-panel" style="padding: 1.5rem; margin-top: 2rem;">
+      <h3 style="font-size: 1.15rem; margin-bottom: 1rem; color: var(--text-dim);">
+        <i class="fas fa-history"></i> Recent No-Shows (Recall Available)
+      </h3>
+      <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
+        {% for ns in no_show_items %}
+          <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-light); border-radius: 12px; padding: 0.6rem 1rem; display: inline-flex; align-items: center; gap: 0.75rem;">
+            <div>
+              <span style="font-weight: 700; color: #fff;">{{ ns.name }}</span>
+              <span style="font-size: 0.75rem; color: var(--text-dim); margin-left: 0.5rem;">{{ ns.phone }}</span>
+            </div>
+            <button onclick="recallCustomer('{{ ns.id }}', '{{ selected_business.id }}')" class="btn btn-secondary btn-sm" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;">
+              <i class="fas fa-undo"></i> Recall
+            </button>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
 
 {% else %}
   <div class="glass-panel" style="padding: 3rem; text-align: center;">
@@ -225,6 +324,21 @@
       </div>
 
       <div class="form-group">
+        <label class="form-label" for="walkinCategory">Service Category</label>
+        <select id="walkinCategory" class="form-control form-select">
+          {% if selected_business and selected_business.categories %}
+            {% for cat in selected_business.categories %}
+              <option value="{{ cat.name }}">{{ cat.name }} (~{{ cat.duration }}m)</option>
+            {% endfor %}
+          {% else %}
+            <option value="General Inquiry">General Inquiry</option>
+            <option value="Standard Service">Standard Service</option>
+            <option value="Priority Support">Priority Support</option>
+          {% endif %}
+        </select>
+      </div>
+
+      <div class="form-group">
         <label class="form-label" for="walkinPriority">Priority Level</label>
         <select id="walkinPriority" class="form-control form-select">
           <option value="3">Normal (Standard)</option>
@@ -246,15 +360,62 @@
     </form>
   </div>
 </div>
+
+<!-- Business Settings Modal -->
+{% if selected_business %}
+<div id="businessSettingsModal" class="modal-overlay">
+  <div class="modal-container">
+    <div class="modal-header">
+      <h3 style="font-size: 1.35rem;">Venue Settings - {{ selected_business.name }}</h3>
+      <button onclick="closeModal('businessSettingsModal')" style="background: none; border: none; color: var(--text-dim); font-size: 1.25rem; cursor: pointer;">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
+    <form onsubmit="submitBusinessSettings(event, '{{ selected_business.id }}')">
+      <div class="form-group">
+        <label class="form-label" for="cfgCounters">Service Counters / Desks (Comma separated)</label>
+        <input type="text" id="cfgCounters" class="form-control" value="{{ selected_business.counters|join(', ') if selected_business.counters else 'Counter 1, Counter 2, Desk A' }}">
+        <small style="color: var(--text-dim); font-size: 0.75rem;">e.g. Counter 1, Counter 2, Window A, Room 102</small>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="cfgCategories">Service Categories & Target Minutes (name:minutes, comma separated)</label>
+        <input type="text" id="cfgCategories" class="form-control" value="{% for c in selected_business.categories %}{{ c.name }}:{{ c.duration }}{% if not loop.last %}, {% endif %}{% endfor %}">
+        <small style="color: var(--text-dim); font-size: 0.75rem;">e.g. Quick Inquiry:5, Standard Service:15, Comprehensive:30</small>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="cfgCapacity">Max Queue Capacity (Cap)</label>
+        <input type="number" id="cfgCapacity" class="form-control" min="5" max="500" value="{{ selected_business.max_capacity or 50 }}">
+      </div>
+
+      <div class="form-group" style="display: flex; align-items: center; gap: 0.75rem;">
+        <input type="checkbox" id="cfgPaused" {% if selected_business.is_paused %}checked{% endif %} style="width: 18px; height: 18px; accent-color: var(--primary);">
+        <label for="cfgPaused" class="form-label" style="margin-bottom: 0; cursor: pointer;">
+          Pause Queue Intake (Prevents new customers from joining)
+        </label>
+      </div>
+
+      <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+        <button type="button" onclick="closeModal('businessSettingsModal')" class="btn btn-secondary" style="flex: 1;">Cancel</button>
+        <button type="submit" class="btn btn-primary" style="flex: 1;"><i class="fas fa-save"></i> Save Settings</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
+// Submit Walk-in Customer
 async function submitWalkinCustomer(e) {
   e.preventDefault();
   const businessId = document.getElementById('modalBusinessId').value;
   const name = document.getElementById('walkinName').value;
   const phone = document.getElementById('walkinPhone').value;
+  const category = document.getElementById('walkinCategory').value;
   const priority = document.getElementById('walkinPriority').value;
   const details = document.getElementById('walkinDetails').value;
 
@@ -266,6 +427,7 @@ async function submitWalkinCustomer(e) {
         business_id: businessId,
         name: name,
         phone: phone,
+        service_category: category,
         priority: priority,
         details: details
       })
@@ -281,5 +443,58 @@ async function submitWalkinCustomer(e) {
     alert('Error adding customer to queue');
   }
 }
+
+// Submit Business Settings
+async function submitBusinessSettings(e, businessId) {
+  e.preventDefault();
+  const counters = document.getElementById('cfgCounters').value;
+  const categories = document.getElementById('cfgCategories').value;
+  const capacity = document.getElementById('cfgCapacity').value;
+  const isPaused = document.getElementById('cfgPaused').checked;
+
+  try {
+    const res = await fetch(`/api/business/${businessId}/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        counters: counters,
+        categories: categories,
+        max_capacity: capacity,
+        is_paused: isPaused
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      alert('Venue settings updated successfully!');
+      window.location.reload();
+    } else {
+      alert(data.error || 'Failed to update settings');
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Error saving venue settings');
+  }
+}
+
+// Background auto-refresh polling every 6 seconds to keep operations live
+document.addEventListener('DOMContentLoaded', () => {
+  const bizId = "{{ selected_business_id if selected_business_id else '' }}";
+  if (!bizId) return;
+
+  setInterval(async () => {
+    try {
+      const res = await fetch(`/api/queue?business_id=${bizId}`);
+      if (!res.ok) return;
+      const items = await res.json();
+      const countEl = document.getElementById('adminQueueCount');
+      if (countEl && items.length !== parseInt(countEl.textContent || '0')) {
+        // Queue state changed: smooth reload
+        window.location.reload();
+      }
+    } catch (err) {
+      console.debug('Admin queue background poll', err);
+    }
+  }, 6000);
+});
 </script>
 {% endblock %}

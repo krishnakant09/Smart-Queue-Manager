@@ -1,0 +1,259 @@
+{% extends 'base.html' %}
+
+{% block title %}Digital Pass - Ticket #{{ position }} • {{ business.name }}{% endblock %}
+
+{% block content %}
+<div class="pass-wrapper" style="max-width: 540px; margin: 1.5rem auto 3.5rem;">
+  
+  <!-- Back Button & Live Status Header -->
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem;">
+    <a href="{{ url_for('business_queue', business_id=business.id) }}" class="btn btn-secondary btn-sm">
+      <i class="fas fa-arrow-left"></i> Venue Page
+    </a>
+    <div class="live-indicator">
+      <span class="live-dot"></span> Live Ticket Sync
+    </div>
+  </div>
+
+  <!-- Digital Wallet Pass Card -->
+  <div class="wallet-pass-card" id="walletPassCard">
+    <!-- Pass Top Header -->
+    <div class="pass-header">
+      <div style="display: flex; align-items: center; gap: 0.75rem;">
+        <div class="brand-icon" style="width: 44px; height: 44px; font-size: 1.25rem;">
+          <i class="fas {{ business.icon or 'fa-store' }}"></i>
+        </div>
+        <div>
+          <span class="pass-badge">SMART QUEUE PASS</span>
+          <h2 style="font-size: 1.35rem; color: #fff; margin-top: 0.15rem;">{{ business.name }}</h2>
+        </div>
+      </div>
+      <div style="text-align: right;">
+        <div style="font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; font-weight: 700;">LOCATION</div>
+        <div style="color: var(--text-main); font-weight: 600; font-size: 0.9rem;">{{ business.location or 'Main Location' }}</div>
+      </div>
+    </div>
+
+    <!-- Pass Main Body: Rank & Status -->
+    <div class="pass-body">
+      <!-- Animated Rank Circle -->
+      <div class="pass-rank-box" id="passRankBox">
+        {% if item.status == 'called' %}
+          <div class="pass-called-banner">
+            <i class="fas fa-bullhorn"></i> YOU ARE BEING CALLED!
+          </div>
+          <div style="font-size: 1.35rem; font-weight: 800; color: #10b981; font-family: 'Outfit'; margin-top: 0.5rem;">
+            Proceed to <span style="text-decoration: underline;">{{ item.assigned_counter or 'Counter 1' }}</span>
+          </div>
+        {% elif item.status == 'completed' %}
+          <div style="color: var(--success); font-size: 1.5rem; font-weight: 800; font-family: 'Outfit';">
+            <i class="fas fa-check-circle"></i> Service Completed
+          </div>
+          <a href="{{ url_for('feedback_page', item_id=item.id) }}" class="btn btn-primary btn-sm" style="margin-top: 0.75rem;">
+            <i class="fas fa-star"></i> Leave Feedback
+          </a>
+        {% elif item.status == 'no_show' %}
+          <div style="color: var(--danger); font-size: 1.3rem; font-weight: 700;">
+            <i class="fas fa-user-slash"></i> Marked as No-Show
+          </div>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.35rem;">
+            Please speak with the service counter to reactivate your ticket.
+          </p>
+        {% else %}
+          <div class="pass-pos-tag">YOUR QUEUE POSITION</div>
+          <div class="pass-pos-number" id="passPosNumber">#{{ position }}</div>
+          <div class="pass-status-pill" id="passStatusPill">
+            {% if position == 1 %}
+              <i class="fas fa-bell"></i> YOU ARE NEXT IN LINE
+            {% elif item.status == 'delayed' %}
+              <i class="fas fa-clock"></i> DELAYED (+10 MIN)
+            {% else %}
+              <i class="fas fa-user-clock"></i> WAITING IN QUEUE
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+
+      <!-- Ticket Metadata Grid -->
+      <div class="pass-meta-grid">
+        <div class="pass-meta-cell">
+          <div class="meta-label">CUSTOMER</div>
+          <div class="meta-value">{{ item.name }}</div>
+        </div>
+        <div class="pass-meta-cell">
+          <div class="meta-label">SERVICE</div>
+          <div class="meta-value">{{ item.service_category or 'General Inquiry' }}</div>
+        </div>
+        <div class="pass-meta-cell">
+          <div class="meta-label">EST. WAIT TIME</div>
+          <div class="meta-value" style="color: #fbbf24;" id="passWaitTime">
+            {{ prediction.display if prediction else '~10 min' }}
+          </div>
+        </div>
+        <div class="pass-meta-cell">
+          <div class="meta-label">ASSIGNED COUNTER</div>
+          <div class="meta-value" style="color: var(--secondary);" id="passCounter">
+            {{ item.assigned_counter or 'Pending' }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Perforation Strip (Tear-off notches) -->
+    <div class="pass-tear-strip">
+      <div class="tear-notch-left"></div>
+      <div class="tear-line"></div>
+      <div class="tear-notch-right"></div>
+    </div>
+
+    <!-- Pass Barcode & QR Footer -->
+    <div class="pass-footer">
+      <div style="display: flex; align-items: center; justify-content: space-around; flex-wrap: wrap; gap: 1rem;">
+        <div style="background: #fff; padding: 0.85rem; border-radius: 12px; display: inline-block;">
+          <div id="passQrCanvas"></div>
+        </div>
+        <div style="text-align: left;">
+          <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; font-weight: 700;">TICKET ID</div>
+          <div style="font-family: monospace; font-size: 0.95rem; font-weight: 700; color: #fff; letter-spacing: 0.05em;">
+            {{ item.id[:8] | upper }}-{{ item.id[9:13] | upper }}
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">
+            Joined: {{ (item.timestamp|string)[11:16] if item.timestamp else 'Just now' }}
+          </div>
+          <div class="barcode-strip">
+            ||| | |||| | || ||||| | ||| |||| |
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interactive Action Buttons -->
+  <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1.5rem;">
+    {% if item.status in ('waiting', 'delayed') %}
+      <button onclick="deferMyTurn('{{ item.id }}')" id="deferTurnBtn" class="btn btn-warning btn-lg" style="width: 100%;">
+        <i class="fas fa-running"></i> I'm Running Late (+10 min Delay)
+      </button>
+      <div id="deferMsg" style="font-size: 0.85rem; color: #fbbf24; text-align: center; display: none;"></div>
+    {% endif %}
+
+    <div style="display: flex; gap: 0.75rem;">
+      <button onclick="window.print()" class="btn btn-secondary" style="flex: 1;">
+        <i class="fas fa-print"></i> Save / Print Pass
+      </button>
+      <button onclick="copyToClipboard(window.location.href, this)" class="btn btn-secondary" style="flex: 1;">
+        <i class="fas fa-share-alt"></i> Share Pass
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+// Generate QR code for ticket verification
+document.addEventListener('DOMContentLoaded', () => {
+  const qrContainer = document.getElementById('passQrCanvas');
+  if (qrContainer && window.QRCode) {
+    new QRCode(qrContainer, {
+      text: "{{ ticket_url }}",
+      width: 110,
+      height: 110,
+      colorDark: "#0f172a",
+      colorLight: "#ffffff",
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  }
+
+  // Real-time polling auto-sync every 4 seconds
+  const itemId = "{{ item.id }}";
+  setInterval(() => {
+    syncTicketStatus(itemId);
+  }, 4000);
+});
+
+// Sync ticket position & counter dynamically
+async function syncTicketStatus(itemId) {
+  try {
+    const res = await fetch(`/api/queue/${itemId}/status`);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const rankNumberEl = document.getElementById('passPosNumber');
+    const waitTimeEl = document.getElementById('passWaitTime');
+    const counterEl = document.getElementById('passCounter');
+    const rankBox = document.getElementById('passRankBox');
+
+    if (waitTimeEl && data.estimated_wait) {
+      waitTimeEl.textContent = data.estimated_wait;
+    }
+    if (counterEl && data.assigned_counter) {
+      counterEl.textContent = data.assigned_counter;
+    }
+
+    if (data.status === 'called') {
+      rankBox.innerHTML = `
+        <div class="pass-called-banner">
+          <i class="fas fa-bullhorn"></i> YOU ARE BEING CALLED!
+        </div>
+        <div style="font-size: 1.35rem; font-weight: 800; color: #10b981; font-family: 'Outfit'; margin-top: 0.5rem;">
+          Proceed to <span style="text-decoration: underline;">${data.assigned_counter || 'Counter 1'}</span>
+        </div>
+      `;
+      playQueueChime();
+    } else if (data.status === 'completed') {
+      rankBox.innerHTML = `
+        <div style="color: var(--success); font-size: 1.5rem; font-weight: 800; font-family: 'Outfit';">
+          <i class="fas fa-check-circle"></i> Service Completed
+        </div>
+        <a href="/feedback/${data.id}" class="btn btn-primary btn-sm" style="margin-top: 0.75rem;">
+          <i class="fas fa-star"></i> Leave Feedback
+        </a>
+      `;
+    } else if (rankNumberEl && data.position) {
+      rankNumberEl.textContent = `#${data.position}`;
+    }
+  } catch (err) {
+    console.debug('Background ticket sync', err);
+  }
+}
+
+// "I'm Running Late" action
+async function deferMyTurn(itemId) {
+  const btn = document.getElementById('deferTurnBtn');
+  const msgEl = document.getElementById('deferMsg');
+  if (!confirm('Delay your turn by 10 minutes? This will move you back in line to give you more time to arrive.')) {
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adjusting Line Position...';
+
+  try {
+    const res = await fetch(`/api/queue/${itemId}/defer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (data.success) {
+      msgEl.style.display = 'block';
+      msgEl.textContent = data.message;
+      btn.innerHTML = '<i class="fas fa-check"></i> Delayed (+10 min)';
+      btn.style.opacity = '0.7';
+      // Sync UI
+      syncTicketStatus(itemId);
+    } else {
+      alert(data.error || 'Could not defer turn');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-running"></i> I\'m Running Late (+10 min Delay)';
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Error delaying queue turn');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-running"></i> I\'m Running Late (+10 min Delay)';
+  }
+}
+</script>
+{% endblock %}
